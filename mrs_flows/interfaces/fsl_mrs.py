@@ -1,24 +1,26 @@
-from nipype.interfaces.base import BaseInterface, BaseInterfaceInputSpec, OutputSpec, traits
-from fsl_mrs.utils.nifti_mrs import NIfTI_MRS
-from fsl_mrs.utils.mrs_basis import Basis
+import os
+
+from nipype.interfaces.base import BaseInterface, BaseInterfaceInputSpec, TraitedSpec, traits, File
+from fsl_mrs.core.nifti_mrs import NIFTI_MRS
+from fsl_mrs.core.basis import Basis
 
 # Functions
 
-def read_nifti_mrs(path):
+def read_NIFTI_MRS(path):
     """
-    Read NIfTI MRS
+    Read NIFTI MRS
     """
     
     from fsl_mrs.utils import mrs_io
     
-    nifti_mrs = mrs_io.read_FID(path)
+    NIFTI_MRS = mrs_io.read_FID(path)
     
-    return nifti_mrs
+    return NIFTI_MRS
 
 
 def read_basis(path, type=['press', 'hermes']):
     """
-    Read NIfTI MRS
+    Read NIFTI MRS
     """
     from pathlib import Path
     from fsl_mrs.utils import mrs_io
@@ -31,7 +33,7 @@ def read_basis(path, type=['press', 'hermes']):
             a = mrs_io.basis(Path(path) / 'a')
             b = mrs_io.basis(Path(path) / 'b')
             c = mrs_io.basis(Path(path) / 'c')
-            c = mrs_io.basis(Path(path) / 'd')
+            d = mrs_io.basis(Path(path) / 'd')
             return a,b,c,d
         case _:
             return None
@@ -42,42 +44,53 @@ def preproc_spectrum(svs, ecc_ref=None):
     Preprocess HERMES spectra that have been aligned within DIM_DYN.
     """
     if ecc_ref is not None:
-        svs = nifti_mrs_proc.ecc(svs, ecc_ref)
+        svs = NIFTI_MRS_proc.ecc(svs, ecc_ref)
 
     hlsvdlimits = [-0.25, 0.25]
-    svs = nifti_mrs_proc.remove_peaks(svs, hlsvdlimits, limit_units='ppm')
-    svs = nifti_mrs_proc.shift_to_reference(svs, ppm_ref=3.027, peak_search=(2.9, 3.1))
-    svs = nifti_mrs_proc.phase_correct(svs, ppmlim=(2.9, 3.1))
+    svs = NIFTI_MRS_proc.remove_peaks(svs, hlsvdlimits, limit_units='ppm')
+    svs = NIFTI_MRS_proc.shift_to_reference(svs, ppm_ref=3.027, peak_search=(2.9, 3.1))
+    svs = NIFTI_MRS_proc.phase_correct(svs, ppmlim=(2.9, 3.1))
     return svs
 
 
-# Input and Output Specs
+# General Input and Output Specs
 
-class Base_NIfTI_MRS_InputSpec(BaseInterfaceInputSpec):
-    main_input = traits.Instance(
-        NIfTI_MRS, 
-        desc="Main NIfTI_MRS input", 
+class Base_NIFTI_MRS_InputSpec(BaseInterfaceInputSpec):
+    in_file = File(
+        exists=True,
+        desc="NIFTI_MRS data.", 
+        mandatory=True
+        )
+    out_file = File(
+        desc="NIFTI_MRS data.",
         mandatory=True
         )
     
-class Ref_NIfTI_MRS_InputSpec(Base_NIfTI_MRS_InputSpec):
-    ref = traits.Instance(
-        NIfTI_MRS,
-        desc="NIfTI_MRS water reference input", 
+class Base_NIFTI_MRS_OutputSpec(TraitedSpec):
+    out_file = File(
+        exists=True,
+        desc="NIFTI_MRS data.",
+        mandatory=True
+        )
+    
+class Ref_NIFTI_MRS_InputSpec(BaseInterfaceInputSpec):
+    ref = File(
+        exists=True,
+        desc="NIFTI_MRS water reference data.", 
         mandatory=True
         )
 
-class Dim_NIfTI_MRS_InputSpec(Base_NIfTI_MRS_InputSpec):
+class Dim_NIFTI_MRS_InputSpec(BaseInterfaceInputSpec):
     dim = traits.Enum(
-        "DIM_DYN", "DIM_EDIT",
-        desc="NIfTI_MRS dimension ('DIM_DYN':transients, 'DIM_EDIT':edit subspectra).",
+        "DIM_DYN", "DIM_EDIT", 'all',
+        desc="NIFTI-MRS dimension tag, or 'all'.",
         mandatory=True
     )
     
-class ppm_NIfTI_MRS_InputSpec(Base_NIfTI_MRS_InputSpec):
-    ppmlim = traits.Tuple(traits.Float, desc="ppm range.", mandatory=True)
+class ppm_NIFTI_MRS_InputSpec(BaseInterfaceInputSpec):
+    ppmlim = traits.Tuple((traits.Float, traits.Float), desc="ppm range.", mandatory=True)
     
-class Model_NIfTI_MRS_InputSpec(Base_NIfTI_MRS_InputSpec):
+class Model_NIFTI_MRS_InputSpec(BaseInterfaceInputSpec):
     basis = traits.Either(
         traits.Instance(Basis),
         traits.Tuple(traits.Instance(Basis)),
@@ -90,125 +103,201 @@ class Model_NIfTI_MRS_InputSpec(Base_NIfTI_MRS_InputSpec):
         desc="Model type.",
         mandatory=True
     )
-    
-    # num_threads = traits.Int(
-    #     "Numbers of threads when running interface.", 
-    #     default=1, 
-    #     usedefault=False
-    #     )
-
-class NIfTI_MRS_OutputSpec(OutputSpec):
-    main_output = traits.Either(
-        traits.Instance(NIfTI_MRS),
-        traits.Tuple(traits.Instance(NIfTI_MRS)),
-        desc="Main NIfTI_MRS output"
-        )
 
 # Interfaces
 
+# ------------------ Align ------------------
+class AlignInputSpec(Base_NIFTI_MRS_InputSpec, Dim_NIFTI_MRS_InputSpec):
+    # TODO: Add optional parameters
+    # Optional inputs
+    window=traits.Int(desc="Window size.", default=None, mandatory=False)
+    # target=None,
+    ppmlim=traits.Tuple((traits.Float(), traits.Float()), desc="ppm search limits.", default=None, mandatory=False)
+    niter=traits.Int(desc="niter: Number of total iterations", default=2, mandatory=False)
+    # figure=False,
+    # report=None,
+    # report_all=False,
+    # :param NIFTI_MRS data: Data to align
+    # :param str dim: NIFTI-MRS dimension tag, or 'all'
+    # :param int window: Window size.
+    # :param target: Optional target FID
+    # :param ppmlim: ppm search limits.
+    # :param int niter: Number of total iterations
+    # :param figure: True to show figure.
+    # :param report: Provide output location as path to generate report
+    # :param report_all: True to output all indicies
+
+def _align(in_file, out_file, dim='DIM_DYN'):
+    # TODO: Add optional parameters
+    """
+    Align NIFTI_MRS.
+    """
+    from fsl_mrs.utils.mrs_io import read_FID
+    from fsl_mrs.utils.preproc import nifti_mrs_proc
+
+    nifti_mrs = read_FID(in_file)
+    
+    if dim in nifti_mrs.dim_tags:
+        print("Performing align in DIM_DYN.")
+        nifti_mrs = nifti_mrs_proc.align(nifti_mrs, dim)
+
+        print(f"Save NIfTI MRS at {out_file}.")
+        nifti_mrs.save(out_file)
+    else: 
+        # if skipping step is ok
+        print(f"No {dim}, skipping align step.")
+        out_file = in_file
+
+    return out_file
+
 class Align(BaseInterface):
-    input_spec = Dim_NIfTI_MRS_InputSpec
-    output_spec = NIfTI_MRS_OutputSpec
-    
-    def _align(nifti_mrs, dim='DIM_DYN'):
-        """
-        Align NIfTI_MRS.
-        """
-        from fsl_mrs.utils.preproc import nifti_mrs_proc
-        
-        if dim in nifti_mrs.dim_tags:
-            nifti_mrs = nifti_mrs_proc.align(nifti_mrs, dim)
-        
-        return nifti_mrs
+    # Input and output specs
+    input_spec = AlignInputSpec
+    output_spec = Base_NIFTI_MRS_OutputSpec
     
     def _run_interface(self, runtime):
-        # Lógica que procesa el objeto de entrada
-        self._main_output = self._align(
-            self.inputs.main_input, 
+
+        # output to tmp directory
+        self.inputs.out_file = os.path.abspath(self.inputs.out_file)
+
+        # run function
+        self.inputs.out_file = _align(
+            # mandatory file_names
+            self.inputs.in_file, 
+            self.inputs.out_file,
+            # mandatory parameters
             self.inputs.dim
+            # optional parameters
+            # TODO: Add optional parameters
             )
+        
         return runtime
 
     def _list_outputs(self):
-        # Retorna la instancia procesada
+        # get outputs
         outputs = self._outputs().get()
-        outputs["main_output"] = self._main_output
+        outputs['out_file'] = self.inputs.out_file
         return outputs
+
+# ------------------ Average ------------------
+
+class AverageInputSpec(Base_NIFTI_MRS_InputSpec, Dim_NIFTI_MRS_InputSpec):
+    pass
+
+def _average(in_file, out_file, dim):
+    """
+    Average NIFTI_MRS.
+    """
+    from fsl_mrs.utils.preproc import nifti_mrs_proc
+    from fsl_mrs.utils.mrs_io import read_FID
+
+    nifti_mrs = read_FID(in_file)
     
-    
+    if dim in nifti_mrs.dim_tags:
+        nifti_mrs = nifti_mrs_proc.average(nifti_mrs, dim)
+        nifti_mrs.save(out_file)
+    else:
+        out_file = in_file
+
+    return out_file
+
 class Average(BaseInterface):
-    input_spec = Dim_NIfTI_MRS_InputSpec
-    output_spec = NIfTI_MRS_OutputSpec
-    
-    def _average(nifti_mrs, dim='DIM_DYN'):
-        """
-        Average NIfTI_MRS.
-        """
-        from fsl_mrs.utils.preproc import nifti_mrs_proc
-        
-        if dim in ref.dim_tags:
-            nifti_mrs = nifti_mrs_proc._average(nifti_mrs, dim)
-            
-        return nifti_mrs
+    # Input and output specs
+    input_spec = AverageInputSpec
+    output_spec = Base_NIFTI_MRS_OutputSpec
     
     def _run_interface(self, runtime):
-        # Lógica que procesa el objeto de entrada
-        self._main_output = self._average(
-            self.inputs.main_input,
+
+        # output to tmp directory
+        self.inputs.out_file = os.path.abspath(self.inputs.out_file)
+
+        # run function
+        self.inputs.out_file = _average(
+            # mandatory file_names
+            self.inputs.in_file, 
+            self.inputs.out_file,
+            # mandatory parameters
             self.inputs.dim
+            # optional parameters
+            # TODO: Add optional parameters
             )
+        
         return runtime
 
     def _list_outputs(self):
-        # Retorna la instancia procesada
+        # get outputs
         outputs = self._outputs().get()
-        outputs["main_output"] = self._main_output
+        outputs['out_file'] = self.inputs.out_file
         return outputs
+    
+# ------------------ EddyCurrentCorrection ------------------
+class EddyCurrentCorrectionInputSpec(Base_NIFTI_MRS_InputSpec, Ref_NIFTI_MRS_InputSpec):
+    pass
 
+def _eddy_current_correction(in_file, out_file, ecc_ref):
+    """
+    Perform eddy current correction.
+    """
+    from fsl_mrs.utils.preproc import nifti_mrs_proc
+    from fsl_mrs.utils import mrs_io
+
+    nifti_mrs = mrs_io.read_FID(in_file)
+    ecc_ref = mrs_io.read_FID(ecc_ref)
+
+    if ecc_ref is not None:
+        nifti_mrs = nifti_mrs_proc.ecc(nifti_mrs, ecc_ref)
+        nifti_mrs.save(out_file)
+    else:
+        out_file = in_file
+    
+    return out_file
 
 class EddyCurrentCorrection(BaseInterface):
-    input_spec = Ref_NIfTI_MRS_InputSpec
-    output_spec = NIfTI_MRS_OutputSpec
-    
-    def _eddy_current_correction(nifti_mrs, ecc_ref=None):
-        """
-        Perform eddy current correction.
-        """
-        from fsl_mrs.utils.preproc import nifti_mrs_proc
-        
-        if ecc_ref is not None:
-            nifti_mrs = nifti_mrs_proc.ecc(nifti_mrs, ecc_ref)
-        
-        return nifti_mrs
+    input_spec = EddyCurrentCorrectionInputSpec
+    output_spec = Base_NIFTI_MRS_OutputSpec
     
     def _run_interface(self, runtime):
-        # Lógica que procesa el objeto de entrada
-        self._main_output = self._eddy_current_correction(
-            self.inputs.main_input,
+
+        # output to tmp directory
+        self.inputs.out_file = os.path.abspath(self.inputs.out_file)
+
+        # run function
+        self.inputs.out_file = _average(
+            # mandatory file_names
+            self.inputs.in_file, 
+            self.inputs.out_file,
+            # mandatory parameters
             self.inputs.ref
+            # optional parameters
+            # TODO: Add optional parameters
             )
+        
         return runtime
 
     def _list_outputs(self):
-        # Retorna la instancia procesada
+        # get outputs
         outputs = self._outputs().get()
-        outputs["main_output"] = self._main_output
+        outputs['out_file'] = self.inputs.out_file
         return outputs
 
+# ------------------ PhaseCorrect ------------------
+class PhaseCorrectInputSpec(Base_NIFTI_MRS_InputSpec, ppm_NIFTI_MRS_InputSpec):
+    pass
+
+def _phase_correct(NIFTI_MRS, ppmlim=(2.9,3.1)):
+    """
+    Phase correct NIFTI MRS.
+    """
+    from fsl_mrs.utils.preproc import NIFTI_MRS_proc
+    from fsl_mrs.utils.mrs_io import read_FID
+    
+    NIFTI_MRS = NIFTI_MRS_proc.phase_correct(NIFTI_MRS, ppmlim=ppmlim)
+    
+    return NIFTI_MRS
 
 class PhaseCorrect(BaseInterface):
-    input_spec = ppm_NIfTI_MRS_InputSpec
-    output_spec = NIfTI_MRS_OutputSpec
-    
-    def _phase_correct(nifti_mrs, ppmlim=(2.9,3.1)):
-        """
-        Phase correct NIfTI MRS.
-        """
-        from fsl_mrs.utils.preproc import nifti_mrs_proc
-        
-        nifti_mrs = nifti_mrs_proc.phase_correct(nifti_mrs, ppmlim=ppmlim)
-        
-        return nifti_mrs
+    input_spec = PhaseCorrectInputSpec
+    output_spec = Base_NIFTI_MRS_OutputSpec
     
     def _run_interface(self, runtime):
         # Lógica que procesa el objeto de entrada
@@ -226,22 +315,22 @@ class PhaseCorrect(BaseInterface):
 
 
 class Shift2Creatine(BaseInterface):
-    input_spec = Base_NIfTI_MRS_InputSpec
-    output_spec = NIfTI_MRS_OutputSpec
+    input_spec = Base_NIFTI_MRS_InputSpec
+    output_spec = NIFTI_MRS_OutputSpec
     
-    def _shift_to_creatine(nifti_mrs):
+    def _shift_to_creatine(NIFTI_MRS):
         """
         Shift to Creatine 3.027 ppm peak.
         """
-        from fsl_mrs.utils.preproc import nifti_mrs_proc
+        from fsl_mrs.utils.preproc import NIFTI_MRS_proc
         
-        nifti_mrs = nifti_mrs_proc.shift_to_reference(
-            nifti_mrs, 
+        NIFTI_MRS = NIFTI_MRS_proc.shift_to_reference(
+            NIFTI_MRS, 
             ppm_ref=3.027, 
             peak_search=(2.9, 3.1)
             )
         
-        return nifti_mrs
+        return NIFTI_MRS
     
     def _run_interface(self, runtime):
         # Lógica que procesa el objeto de entrada
@@ -256,19 +345,19 @@ class Shift2Creatine(BaseInterface):
     
     
 class RemoveWater(BaseInterface):
-    input_spec = Base_NIfTI_MRS_InputSpec
-    output_spec = NIfTI_MRS_OutputSpec
+    input_spec = Base_NIFTI_MRS_InputSpec
+    output_spec = NIFTI_MRS_OutputSpec
     
-    def _remove_water(nifti_mrs):
+    def _remove_water(NIFTI_MRS):
         """
         Perform eddy current correction.
         """
-        from fsl_mrs.utils.preproc import nifti_mrs_proc
+        from fsl_mrs.utils.preproc import NIFTI_MRS_proc
         
         hlsvdlimits = [-0.25, 0.25]
-        nifti_mrs = nifti_mrs_proc.remove_peaks(nifti_mrs)
+        NIFTI_MRS = NIFTI_MRS_proc.remove_peaks(NIFTI_MRS)
         
-        return nifti_mrs
+        return NIFTI_MRS
     
     def _run_interface(self, runtime):
         # Lógica que procesa el objeto de entrada
@@ -283,16 +372,16 @@ class RemoveWater(BaseInterface):
 
 
 class DynamicAlign(BaseInterface):
-    class Dynamic_NIfTI_MRS_InputSpec(
-        Dim_NIfTI_MRS_InputSpec, 
-        Model_NIfTI_MRS_InputSpec, 
-        ppm_NIfTI_MRS_InputSpec):
+    class Dynamic_NIFTI_MRS_InputSpec(
+        Dim_NIFTI_MRS_InputSpec, 
+        Model_NIFTI_MRS_InputSpec, 
+        ppm_NIFTI_MRS_InputSpec):
         pass
     
-    input_spec = Dynamic_NIfTI_MRS_InputSpec
-    output_spec = NIfTI_MRS_OutputSpec
+    input_spec = Dynamic_NIFTI_MRS_InputSpec
+    output_spec = NIFTI_MRS_OutputSpec
     
-    def _dynamic_align(nifti_mrs, dim, basis, baseline_order, model, ppmlim):
+    def _dynamic_align(NIFTI_MRS, dim, basis, baseline_order, model, ppmlim):
         """
         Perform eddy current correction.
         """
@@ -304,10 +393,10 @@ class DynamicAlign(BaseInterface):
             "ppmlim":ppmlim
             }
 
-        if dim in nifti_mrs.dim_tags:
-            nifti_mrs, _eps, _phi = dproc.align_by_dynamic_fit(nifti_mrs, basis, fitargs)
+        if dim in NIFTI_MRS.dim_tags:
+            NIFTI_MRS, _eps, _phi = dproc.align_by_dynamic_fit(NIFTI_MRS, basis, fitargs)
         
-        return nifti_mrs
+        return NIFTI_MRS
     
     def _run_interface(self, runtime):
         # Lógica que procesa el objeto de entrada
