@@ -1004,3 +1004,87 @@ class HERMESSortSubspectra(BaseInterface):
         outputs = self._outputs().get()
         outputs['out_file'] = self.inputs.out_file
         return outputs
+
+
+class hermes_sum_InputSpec(BaseInterfaceInputSpec):
+    in_file = File(
+        exists=True,
+        desc="NIFTI_MRS data.", 
+        mandatory=True
+        )
+    out_dir = traits.Directory(
+        exists=True, 
+        desc="Output directory.",
+        default = None
+        )
+
+class hermes_sum_OutputSpec(TraitedSpec):
+    summation = File(
+        exists=True,
+        desc="NIFTI_MRS data. Sum of all hermes subspectra."
+    )
+    gaba = File(
+        exists=True,
+        desc="NIFTI_MRS data. GABA On - GABA Off."
+    )
+    gsh = File(
+        exists=True,
+        desc="NIFTI_MRS data. GSH On - GSH Off."
+    )
+
+def io_hermes_edit_sum(in_file, out_dir):
+    """
+    Get HERMES edit data.
+    """
+    from fsl_mrs.utils import mrs_io
+    from fsl_mrs.utils.preproc import nifti_mrs_proc
+    
+    extension = '.nii.gz'
+
+    nifti_mrs = mrs_io.read_FID(in_file)
+    a,b,c,d = split_edit_subspectra(nifti_mrs)
+
+    summation = nifti_mrs_proc.add(nifti_mrs_proc.add(a,b), nifti_mrs_proc.add(c,d))
+    gaba = nifti_mrs_proc.subtract(nifti_mrs_proc.add(b, d), nifti_mrs_proc.add(c,a))
+    gsh = nifti_mrs_proc.subtract(nifti_mrs_proc.add(c, d), nifti_mrs_proc.add(b,a))
+
+    summation_path = os.path.join(out_dir, 'summation' + extension)
+    gaba_path = os.path.join(out_dir, 'gaba' + extension)
+    gsh_path = os.path.join(out_dir, 'gsh' + extension)
+
+    summation.save(summation_path)
+    gaba.save(gaba_path)
+    gsh.save(gsh_path)
+
+    return summation_path, gaba_path, gsh_path
+
+
+class HERMES_Edit_Sum(BaseInterface):
+    # Input and output specs
+    input_spec = hermes_sum_InputSpec
+    output_spec = hermes_sum_OutputSpec
+    
+    def _run_interface(self, runtime):
+
+        # output to tmp directory
+        if self.inputs.out_dir:
+            self.inputs.out_dir = os.path.abspath(self.inputs.out_dir)
+        else:
+            self.inputs.out_dir = os.path.abspath(os.getcwd())
+
+        # run function
+        self._summation, self._gaba, self._gsh = io_hermes_edit_sum(
+            # mandatory file_names
+            self.inputs.in_file, 
+            self.inputs.out_dir,
+            )
+        
+        return runtime
+
+    def _list_outputs(self):
+        # get outputs
+        outputs = self._outputs().get()
+        outputs['summation'] = self._summation
+        outputs['gaba'] = self._gaba
+        outputs['gsh'] = self._gsh
+        return outputs

@@ -38,6 +38,8 @@ def get_basic_proc_wf():
     hermes_yalign = Node(HERMESAlignYEdit(), name='hermes_yalign')
     hermes_yalign.inputs.out_file = 'svs_yalign.nii.gz'  
 
+    edit_sum = Node(HERMES_Edit_Sum(), name='edit_sum')
+
     # ref
     remove_zero_mean_ref = Node(_HERMESRefRemoveZeroMeanTransients(), name='remove_zero_mean_ref')
     remove_zero_mean_ref.inputs.in_file = '/home/diego/Documents/projects/mrs_gaba/inputs/mri-raw/sub-001A/mrs/sub-001A_acq-hermes_voi-pcc_ref.nii.gz'
@@ -82,8 +84,9 @@ def get_basic_proc_wf():
         (remove_water, shift2creatine, [('out_file', 'in_file')]),
         (shift2creatine, phase_correct_svs, [('out_file', 'in_file')]),
         (phase_correct_svs, hermes_yalign, [('out_file', 'in_file')]),
-        (hermes_yalign, align_edit, [('out_file', 'in_file')])
-        # (average, hermes_yalign, [('out_file', 'in_file')]),
+        (hermes_yalign, align_edit, [('out_file', 'in_file')]),
+        (align_edit, average, [('out_file', 'in_file')]),
+        (average, edit_sum, [('out_file', 'in_file')]),
         ]
     )
 
