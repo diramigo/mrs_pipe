@@ -1,42 +1,76 @@
 import os
-
+import re
 from nipype.interfaces.base import BaseInterface, BaseInterfaceInputSpec, TraitedSpec, traits, File
 from fsl_mrs.core.nifti_mrs import NIFTI_MRS
 from fsl_mrs.core.basis import Basis
 
 # Functions
 
-def read_NIFTI_MRS(path):
-    """
-    Read NIFTI MRS
-    """
+class Base_fsl_mrs_Interface(BaseInterface):
+    BIDS_KEY_VALUES = r"(sub-[a-zA-Z0-9]+)(_ses-[a-zA-Z0-9]+)?(_task-[a-zA-Z0-9]+)?(_acq-[a-zA-Z0-9]+)?(_nuc-[a-zA-Z0-9]+)?(_voi-[a-zA-Z0-9]+)?(_rec-[a-zA-Z0-9]+)?(_run-[a-zA-Z0-9]+)?(_echo-[a-zA-Z0-9]+)?(_inv-[a-zA-Z0-9]+)?"
+    BIDS_DERIVATIVE =  r"(_desc-[a-zA-Z0-9]+)?"
+    BIDS_SUFFIX_EXTENSION = r"(_[a-zA-Z0-9]+\.nii)(\.gz)?"
+    BIDS_PATTERN = BIDS_KEY_VALUES+BIDS_DERIVATIVE+BIDS_SUFFIX_EXTENSION
+    def _is_bids_valid(self, filename):
+        return bool(re.match(self.BIDS_PATTERN, os.path.basename(filename)))
     
-    from fsl_mrs.utils import mrs_io
+    def _generate_bids_derivative_name(self, filename, desc):
+        bids_key_values = "".join(re.findall(self.BIDS_KEY_VALUES, filename)[-1])
+        bids_suffix_extension = "".join(re.findall(self.BIDS_SUFFIX_EXTENSION, filename)[-1])
+        bids_desc = f'_desc-{desc}'
+        return bids_key_values + bids_desc + bids_suffix_extension
     
-    NIFTI_MRS = mrs_io.read_FID(path)
-    
-    return NIFTI_MRS
+    def _generate_out_file_name(self, in_file, out_file, interface_name):
+        
+        out_bids_compliant = False
+        out_is_str = False
+        if isinstance(out_file, str):
+            out_is_str = True
+            if re.match('^[a-zA-Z0-9]+$', out_file):
+                out_bids_compliant = True
+
+        if self._is_bids_valid(in_file) and out_bids_compliant:
+            return self._generate_bids_derivative_name(in_file, out_file)
+        
+        elif self._is_bids_valid(in_file) and not out_is_str and interface_name:
+           return self._generate_bids_derivative_name(in_file, interface_name)
+        
+        elif not self._is_bids_valid(in_file) and not out_is_str and interface_name:
+            return interface_name + '.nii.gz'
+        else:
+            return out_file
 
 
-def read_basis(path, type=['press', 'hermes']):
-    """
-    Read NIFTI MRS
-    """
-    from pathlib import Path
-    from fsl_mrs.utils import mrs_io
+
+def mrs_io_decorator(out_file):
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            from fsl_mrs.utils import mrs_io
+            from fsl_mrs.core.nifti_mrs import NIFTI_MRS
+
+            if isinstance(args, tuple):
+                args = list(args)
+            else:
+                args = [args]
+            for index, arg in enumerate(args):
+                args[index] = mrs_io.read_FID(arg)
+
+            nifti_mrs = func(*args, **kwargs)
+            
+            if isinstance(nifti_mrs, tuple) and isinstance(out_file, list):
+                for n_mrs, o_file in zip(nifti_mrs, out_file):
+                    n_mrs.save(o_file)
+            elif isinstance(nifti_mrs, NIFTI_MRS) and isinstance(out_file, str):
+                nifti_mrs.save(out_file)
+            else:
+                raise Exception()
+
+            return out_file
+        
+        return wrapper
     
-    match type:
-        case 'press':
-            basis = mrs_io.basis(path)
-            return basis
-        case 'hermes':
-            a = mrs_io.basis(Path(path) / 'a')
-            b = mrs_io.basis(Path(path) / 'b')
-            c = mrs_io.basis(Path(path) / 'c')
-            d = mrs_io.basis(Path(path) / 'd')
-            return a,b,c,d
-        case _:
-            return None
+    return decorator
+
         
 
 # General Input and Output Specs
@@ -49,7 +83,7 @@ class Base_NIFTI_MRS_InputSpec(BaseInterfaceInputSpec):
         )
     out_file = File(
         desc="NIFTI_MRS data.",
-        mandatory=True
+        mandatory=False
         )
     
 class Base_NIFTI_MRS_OutputSpec(TraitedSpec):
@@ -127,48 +161,30 @@ class AlignInputSpec(Base_NIFTI_MRS_InputSpec, Dim_NIFTI_MRS_InputSpec, optional
     # :param report: Provide output location as path to generate report
     # :param report_all: True to output all indicies
 
-def _align(in_file, out_file, dim, ppmlim):
-    # TODO: Add optional parameters
-    """
-    Align NIFTI_MRS.
-    """
-    from fsl_mrs.utils.mrs_io import read_FID
-    from fsl_mrs.utils.preproc import nifti_mrs_proc
 
-    nifti_mrs = read_FID(in_file)
-    
-    if dim in nifti_mrs.dim_tags:
-        print("Performing align in DIM_DYN.")
-        nifti_mrs = nifti_mrs_proc.align(nifti_mrs, dim, ppmlim=ppmlim)
-
-        print(f"Save NIfTI MRS at {out_file}.")
-        nifti_mrs.save(out_file)
-    else: 
-        # if skipping step is ok
-        print(f"No {dim}, skipping align step.")
-        out_file = in_file
-
-    return out_file
-
-class Align(BaseInterface):
+class Align(Base_fsl_mrs_Interface):
     # Input and output specs
     input_spec = AlignInputSpec
     output_spec = Base_NIFTI_MRS_OutputSpec
     
+    INTERFACE_NAME='align'
+
     def _run_interface(self, runtime):
 
         # output to tmp directory
+        self.inputs.out_file = super()._generate_out_file_name(self.inputs.in_file, self.inputs.out_file, self.INTERFACE_NAME)
         self.inputs.out_file = os.path.abspath(self.inputs.out_file)
 
+        from fsl_mrs.utils.preproc import nifti_mrs_proc
+
         # run function
-        self.inputs.out_file = _align(
+        self.inputs.out_file = mrs_io_decorator(self.inputs.out_file)(nifti_mrs_proc.align)(
             # mandatory file_names
             self.inputs.in_file, 
-            self.inputs.out_file,
             # mandatory parameters
-            self.inputs.dim,
+            dim=self.inputs.dim,
             # optional parameters
-            self.inputs.ppmlim
+            ppmlim=self.inputs.ppmlim
             # TODO: Add optional parameters
             )
         
@@ -185,40 +201,28 @@ class Align(BaseInterface):
 class AverageInputSpec(Base_NIFTI_MRS_InputSpec, Dim_NIFTI_MRS_InputSpec):
     pass
 
-def _average(in_file, out_file, dim):
-    """
-    Average NIFTI_MRS.
-    """
-    from fsl_mrs.utils.preproc import nifti_mrs_proc
-    from fsl_mrs.utils.mrs_io import read_FID
 
-    nifti_mrs = read_FID(in_file)
-    
-    if dim in nifti_mrs.dim_tags:
-        nifti_mrs = nifti_mrs_proc.average(nifti_mrs, dim)
-        nifti_mrs.save(out_file)
-    else:
-        out_file = in_file
-
-    return out_file
-
-class Average(BaseInterface):
+class Average(Base_fsl_mrs_Interface):
     # Input and output specs
     input_spec = AverageInputSpec
     output_spec = Base_NIFTI_MRS_OutputSpec
     
+    INTERFACE_NAME='average'
+
     def _run_interface(self, runtime):
 
         # output to tmp directory
+        self.inputs.out_file = super()._generate_out_file_name(self.inputs.in_file, self.inputs.out_file, self.INTERFACE_NAME)
         self.inputs.out_file = os.path.abspath(self.inputs.out_file)
 
+        from fsl_mrs.utils.preproc import nifti_mrs_proc
+
         # run function
-        self.inputs.out_file = _average(
+        self.inputs.out_file = mrs_io_decorator(self.inputs.out_file)(nifti_mrs_proc.average)(
             # mandatory file_names
             self.inputs.in_file, 
-            self.inputs.out_file,
             # mandatory parameters
-            self.inputs.dim
+            dim=self.inputs.dim
             # optional parameters
             # TODO: Add optional parameters
             )
@@ -235,39 +239,25 @@ class Average(BaseInterface):
 class EddyCurrentCorrectionInputSpec(Base_NIFTI_MRS_InputSpec, Ref_NIFTI_MRS_InputSpec):
     pass
 
-def _ecc(in_file, out_file, ecc_ref):
-    """
-    Perform eddy current correction.
-    """
-    from fsl_mrs.utils.preproc import nifti_mrs_proc
-    from fsl_mrs.utils import mrs_io
 
-    nifti_mrs = mrs_io.read_FID(in_file)
-    ecc_ref = mrs_io.read_FID(ecc_ref)
-
-    if ecc_ref is not None:
-        nifti_mrs = nifti_mrs_proc.ecc(nifti_mrs, ecc_ref)
-        nifti_mrs.save(out_file)
-    else:
-        out_file = in_file
-    
-    return out_file
-
-class EddyCurrentCorrection(BaseInterface):
+class EddyCurrentCorrection(Base_fsl_mrs_Interface):
     input_spec = EddyCurrentCorrectionInputSpec
     output_spec = Base_NIFTI_MRS_OutputSpec
     
+    INTERFACE_NAME='ecc'
+
     def _run_interface(self, runtime):
 
         # output to tmp directory
+        self.inputs.out_file = super()._generate_out_file_name(self.inputs.in_file, self.inputs.out_file, self.INTERFACE_NAME)
         self.inputs.out_file = os.path.abspath(self.inputs.out_file)
 
+        from fsl_mrs.utils.preproc import nifti_mrs_proc
+
         # run function
-        self.inputs.out_file = _ecc(
+        self.inputs.out_file = mrs_io_decorator(self.inputs.out_file)(nifti_mrs_proc.ecc)(
             # mandatory file_names
             self.inputs.in_file, 
-            self.inputs.out_file,
-            # mandatory parameters
             self.inputs.ref
             # optional parameters
             # TODO: Add optional parameters
@@ -285,37 +275,27 @@ class EddyCurrentCorrection(BaseInterface):
 class PhaseCorrectInputSpec(Base_NIFTI_MRS_InputSpec, ppm_NIFTI_MRS_InputSpec):
     pass
 
-def _phase_correct(in_file, out_file, ppmlim=(2.9,3.1)):
-    """
-    Phase correct NIFTI MRS.
-    """
-    from fsl_mrs.utils.preproc import nifti_mrs_proc
-    from fsl_mrs.utils.mrs_io import read_FID
 
-    nifti_mrs = read_FID(in_file)
-    
-    nifti_mrs = nifti_mrs_proc.phase_correct(nifti_mrs, ppmlim=ppmlim)
-
-    nifti_mrs.save(out_file)
-    
-    return out_file
-
-class PhaseCorrect(BaseInterface):
+class PhaseCorrect(Base_fsl_mrs_Interface):
     input_spec = PhaseCorrectInputSpec
     output_spec = Base_NIFTI_MRS_OutputSpec
     
+    INTERFACE_NAME='phasecorrrect'
+
     def _run_interface(self, runtime):
 
         # output to tmp directory
+        self.inputs.out_file = super()._generate_out_file_name(self.inputs.in_file, self.inputs.out_file, self.INTERFACE_NAME)
         self.inputs.out_file = os.path.abspath(self.inputs.out_file)
 
+        from fsl_mrs.utils.preproc import nifti_mrs_proc
+
         # run function
-        self.inputs.out_file = _phase_correct(
+        self.inputs.out_file = mrs_io_decorator(self.inputs.out_file)(nifti_mrs_proc.phase_correct)(
             # mandatory file_names
             self.inputs.in_file, 
-            self.inputs.out_file,
             # mandatory parameters
-            self.inputs.ppmlim
+            ppmlim=self.inputs.ppmlim
             # optional parameters
             # TODO: Add optional parameters
             )
@@ -329,20 +309,24 @@ class PhaseCorrect(BaseInterface):
         return outputs
     
 
-class PhaseCorrect_Creatine_ppmlim(BaseInterface):
+class PhaseCorrect_Creatine_ppmlim(Base_fsl_mrs_Interface):
     input_spec = Base_NIFTI_MRS_InputSpec
     output_spec = Base_NIFTI_MRS_OutputSpec
     
+    INTERFACE_NAME='phasecorrectCr'
+
     def _run_interface(self, runtime):
 
         # output to tmp directory
+        self.inputs.out_file = super()._generate_out_file_name(self.inputs.in_file, self.inputs.out_file, self.INTERFACE_NAME)
         self.inputs.out_file = os.path.abspath(self.inputs.out_file)
 
+        from fsl_mrs.utils.preproc import nifti_mrs_proc
+
         # run function
-        self.inputs.out_file = _phase_correct(
+        self.inputs.out_file = mrs_io_decorator(self.inputs.out_file)(nifti_mrs_proc.phase_correct)(
             # mandatory file_names
             self.inputs.in_file, 
-            self.inputs.out_file,
             # mandatory parameters
             ppmlim=(2.9,3.1)
             # optional parameters
@@ -360,46 +344,39 @@ class PhaseCorrect_Creatine_ppmlim(BaseInterface):
     
 # ------------------ ShiftToReference ------------------
 class ppm_ref_InputSpec(BaseInterfaceInputSpec):
-    ppm_ref = traits.Float(desc="Reference shift that peak will be moved to.", mandatory=True)
-    peak_search = traits.Tuple((traits.Float,traits.Float), desc="Search for peak between these ppm limits e.g. (2.8, 3.2) for tCr.", mandatory=True)
+    ppm_ref = traits.Float(
+        desc="Reference shift that peak will be moved to.", 
+        mandatory=True
+        )
+    peak_search = traits.Tuple(
+        (traits.Float,traits.Float), 
+        desc="Search for peak between these ppm limits e.g. (2.8, 3.2) for tCr.", 
+        mandatory=True
+        )
 
 class ShiftToReferenceInputSpec(Base_NIFTI_MRS_InputSpec, ppm_ref_InputSpec):
     pass
 
-def _shift_to_reference(in_file, out_file, ppm_ref, peak_search):
-    """
-    Shift to reference.
-    """
-    from fsl_mrs.utils.preproc import nifti_mrs_proc
-    from fsl_mrs.utils import mrs_io
 
-    nifti_mrs = mrs_io.read_FID(in_file)
-    
-    nifti_mrs = nifti_mrs_proc.shift_to_reference(
-        nifti_mrs, 
-        ppm_ref=ppm_ref, 
-        peak_search=peak_search
-        )
-    
-    nifti_mrs.save(out_file)
-
-    return out_file
-
-class ShiftToReference(BaseInterface):
+class ShiftToReference(Base_fsl_mrs_Interface):
     input_spec = ShiftToReferenceInputSpec
     output_spec = Base_NIFTI_MRS_OutputSpec
     
+    INTERFACE_NAME='shift2reference'
+
     def _run_interface(self, runtime):
 
         # output to tmp directory
+        self.inputs.out_file = super()._generate_out_file_name(self.inputs.in_file, self.inputs.out_file, self.INTERFACE_NAME)
         self.inputs.out_file = os.path.abspath(self.inputs.out_file)
 
+        from fsl_mrs.utils.preproc import nifti_mrs_proc
+
         # run function
-        self.inputs.out_file = _shift_to_reference(
+        self.inputs.out_file = mrs_io_decorator(self.inputs.out_file)(nifti_mrs_proc.shift_to_reference)(
             # mandatory file_names
             self.inputs.in_file, 
-            self.inputs.out_file,
-            # fixed parameters
+            # mandatory parameters
             ppm_ref=self.inputs.ppm_ref,
             peak_search=self.inputs.peak_search,
             # optional parameters
@@ -415,20 +392,24 @@ class ShiftToReference(BaseInterface):
         return outputs
     
 
-class ShiftToCreatine(BaseInterface):
+class ShiftToCreatine(Base_fsl_mrs_Interface):
     input_spec = Base_NIFTI_MRS_InputSpec
     output_spec = Base_NIFTI_MRS_OutputSpec
     
+    INTERFACE_NAME='shift2Cr'
+
     def _run_interface(self, runtime):
 
         # output to tmp directory
+        self.inputs.out_file = super()._generate_out_file_name(self.inputs.in_file, self.inputs.out_file, self.INTERFACE_NAME)
         self.inputs.out_file = os.path.abspath(self.inputs.out_file)
 
+        from fsl_mrs.utils.preproc import nifti_mrs_proc
+
         # run function
-        self.inputs.out_file = _shift_to_reference(
+        self.inputs.out_file = mrs_io_decorator(self.inputs.out_file)(nifti_mrs_proc.shift_to_reference)(
             # mandatory file_names
             self.inputs.in_file, 
-            self.inputs.out_file,
             # fixed parameters
             ppm_ref=3.027,
             peak_search=(2.9, 3.1),
@@ -446,12 +427,31 @@ class ShiftToCreatine(BaseInterface):
 
 # ------------------ ShiftToReference ------------------
 class base_removepeak_InputSpec(BaseInterfaceInputSpec):
-    limits = traits.Tuple((traits.Float(), traits.Float()), desc="ppm limits between which peaks will be removed." , mandatory=True)
-    limit_units = traits.Enum('ppm', 'ppm+shift', 'Hz', desc='units of ppm_limits.', mandatory=False)
+    limits = traits.Tuple(
+        (traits.Float(), traits.Float()), 
+         desc="ppm limits between which peaks will be removed." , 
+         mandatory=True
+         )
+    limit_units = traits.Enum(
+        'ppm', 'ppm+shift', 'Hz', 
+        desc='units of ppm_limits.', 
+        mandatory=False
+        )
 
 class base_removewater_InputSpec(BaseInterfaceInputSpec):
-    limits = traits.Tuple(-.25, .25, desc="ppm limits between which peaks will be removed." , usedefault=True, mandatory=False)
-    limit_units = traits.Enum('ppm', 'ppm+shift', 'Hz', desc='units of ppm_limits.', default='ppm', usedefault=True, mandatory=False)
+    limits = traits.Tuple(
+        -.25, .25, 
+        desc="ppm limits between which peaks will be removed." , 
+        usedefault=True, 
+        mandatory=False
+        )
+    limit_units = traits.Enum(
+        'ppm', 'ppm+shift', 'Hz', 
+        desc='units of ppm_limits.', 
+        default='ppm', 
+        usedefault=True, 
+        mandatory=False
+        )
 
 class RemovePeakInputSpec(Base_NIFTI_MRS_InputSpec, base_removepeak_InputSpec):
     pass
@@ -459,35 +459,25 @@ class RemovePeakInputSpec(Base_NIFTI_MRS_InputSpec, base_removepeak_InputSpec):
 class RemoveWaterInputSpec(Base_NIFTI_MRS_InputSpec, base_removewater_InputSpec):
     pass
 
-def _remove_peaks(in_file, out_file, limits, limit_units):
-    """
-    Remove peak.
-    """
-    from fsl_mrs.utils.preproc import nifti_mrs_proc
-    from fsl_mrs.utils import mrs_io
-    
-    nifti_mrs = mrs_io.read_FID(in_file)
 
-    nifti_mrs = nifti_mrs_proc.remove_peaks(nifti_mrs, limits=limits, limit_units=limit_units)
-    
-    nifti_mrs.save(out_file)
-
-    return out_file
-
-class RemovePeaks(BaseInterface):
+class RemovePeaks(Base_fsl_mrs_Interface):
     input_spec = RemovePeakInputSpec
     output_spec = Base_NIFTI_MRS_OutputSpec
     
+    INTERFACE_NAME='removepeaks'
+
     def _run_interface(self, runtime):
 
         # output to tmp directory
+        self.inputs.out_file = super()._generate_out_file_name(self.inputs.in_file, self.inputs.out_file, self.INTERFACE_NAME)
         self.inputs.out_file = os.path.abspath(self.inputs.out_file)
 
+        from fsl_mrs.utils.preproc import nifti_mrs_proc
+
         # run function
-        self.inputs.out_file = _remove_peaks(
+        self.inputs.out_file = mrs_io_decorator(self.inputs.out_file)(nifti_mrs_proc.remove_peaks)(
             # mandatory file_names
             self.inputs.in_file, 
-            self.inputs.out_file,
             # mandatory parameters
             limits=self.inputs.limits,
             limit_units=self.inputs.limit_units,
@@ -503,20 +493,24 @@ class RemovePeaks(BaseInterface):
         outputs['out_file'] = self.inputs.out_file
         return outputs
 
-class RemoveWater(BaseInterface):
+class RemoveWater(Base_fsl_mrs_Interface):
     input_spec = RemoveWaterInputSpec
     output_spec = Base_NIFTI_MRS_OutputSpec
     
+    INTERFACE_NAME='removeH2O'
+
     def _run_interface(self, runtime):
 
         # output to tmp directory
+        self.inputs.out_file = super()._generate_out_file_name(self.inputs.in_file, self.inputs.out_file, self.INTERFACE_NAME)
         self.inputs.out_file = os.path.abspath(self.inputs.out_file)
 
+        from fsl_mrs.utils.preproc import nifti_mrs_proc
+
         # run function
-        self.inputs.out_file = _remove_peaks(
+        self.inputs.out_file = mrs_io_decorator(self.inputs.out_file)(nifti_mrs_proc.remove_peaks)(
             # mandatory file_names
             self.inputs.in_file, 
-            self.inputs.out_file,
             # fixed parameters
             limits=self.inputs.limits,
             limit_units=self.inputs.limit_units,
@@ -572,7 +566,7 @@ def _dynamic_align(in_file:str, out_file: str, basis: list, baseline_order:int, 
     return out_file, eps, phi
     
 
-class AlignByDynamicFit(BaseInterface):
+class AlignByDynamicFit(Base_fsl_mrs_Interface):
 
     input_spec = AlignByDynamicFit_InputSpec
     output_spec = AlignByDynamicFit_OutputSpec
@@ -624,7 +618,7 @@ def _split_ref_dyn(ref):
     ref_list.append(ref)
     return tuple(ref_list)
 
-def _hermes_ref_remove_zero_mean_transients(in_file, out_file):
+def hermes_ref_remove_zero_mean_transients(ref):
     """
     Function for removing zero_mean transients in TwinsMX HERMES data.
     """
@@ -634,8 +628,7 @@ def _hermes_ref_remove_zero_mean_transients(in_file, out_file):
     import fsl_mrs.core.nifti_mrs as nifti_mrs_tools
     import numpy as np
 
-    # read 
-    ref = mrs_io.read_FID(in_file)
+
     # only the first edit dimension has data on it
     ref, _empty = nifti_mrs_tools.split(ref, dimension='DIM_EDIT', index_or_indices=0)
     # remove dim_edit
@@ -647,29 +640,30 @@ def _hermes_ref_remove_zero_mean_transients(in_file, out_file):
     # merge them back
     ref = nifti_mrs_tools.merge(ref_tuple, dimension='DIM_DYN')
 
-    # save nifti_mrs
-    ref.save(out_file)
-
-    return out_file
+    return ref
 
 
-class _HERMESRefRemoveZeroMeanTransients(BaseInterface):
+class _HERMESRefRemoveZeroMeanTransients(Base_fsl_mrs_Interface):
     """
     For TwinsMX HERMES ref data. Can't guarantee that this is a necesarry or useful step for other HERMES data.
     """
     input_spec = Base_NIFTI_MRS_InputSpec
     output_spec = Base_NIFTI_MRS_OutputSpec
     
+    INTERFACE_NAME='rm0meanTransients'
+
     def _run_interface(self, runtime):
 
         # output to tmp directory
+        self.inputs.out_file = super()._generate_out_file_name(self.inputs.in_file, self.inputs.out_file, self.INTERFACE_NAME)
         self.inputs.out_file = os.path.abspath(self.inputs.out_file)
 
+        from fsl_mrs.utils.preproc import nifti_mrs_proc
+
         # run function
-        self.inputs.out_file = _hermes_ref_remove_zero_mean_transients(
+        self.inputs.out_file = mrs_io_decorator(self.inputs.out_file)(hermes_ref_remove_zero_mean_transients)(
             # mandatory file_names
             self.inputs.in_file, 
-            self.inputs.out_file,
             )
         
         return runtime
@@ -729,13 +723,14 @@ def _split_edit_subspectra(in_file, out_dir):
 class split_edit_subspectra_InputSpec(BaseInterfaceInputSpec):
     in_file = File(exists=True, desc="NIFTI_MRS data.", mandatory=True)
     out_dir = traits.Directory(exists=True, desc="Output directory.", mandatory=False)
+
 class split_edit_subspectra_OutputSpec(TraitedSpec):
     a = File(exists=True, desc="NIFTI_MRS data.", mandatory=True)
     b = File(exists=True, desc="NIFTI_MRS data.", mandatory=True)
     c = File(exists=False, desc="NIFTI_MRS data.", mandatory=False)
     d = File(exists=False, desc="NIFTI_MRS data.", mandatory=False)
 
-class SplitEditSubspectra(BaseInterface):
+class SplitEditSubspectra(Base_fsl_mrs_Interface):
     """
     Split DIM_EDIT.
     """
@@ -841,36 +836,27 @@ def hermes_align_y_edit(svs):
 
     return svs
 
-def _hermes_align_y_edit(in_file, out_file):
-    """
-    Align subspectra in y-axis.
-    """
-    from fsl_mrs.utils import mrs_io
-
-    nifti_mrs = mrs_io.read_FID(in_file)
-
-    nifti_mrs = hermes_align_y_edit(nifti_mrs)
-
-    nifti_mrs.save(out_file)
-
-    return out_file
 
 
-class HERMESAlignYEdit(BaseInterface):
+class HERMESAlignYEdit(Base_fsl_mrs_Interface):
     # Input and output specs
     input_spec = Base_NIFTI_MRS_InputSpec
     output_spec = Base_NIFTI_MRS_OutputSpec
     
+    INTERFACE_NAME='hermesYalign'
+
     def _run_interface(self, runtime):
 
         # output to tmp directory
+        self.inputs.out_file = super()._generate_out_file_name(self.inputs.in_file, self.inputs.out_file, self.INTERFACE_NAME)
         self.inputs.out_file = os.path.abspath(self.inputs.out_file)
 
+        from fsl_mrs.utils.preproc import nifti_mrs_proc
+
         # run function
-        self.inputs.out_file = _hermes_align_y_edit(
+        self.inputs.out_file = mrs_io_decorator(self.inputs.out_file)(hermes_align_y_edit)(
             # mandatory file_names
-            self.inputs.in_file, 
-            self.inputs.out_file,
+            self.inputs.in_file
             )
         
         return runtime
@@ -882,7 +868,7 @@ class HERMESAlignYEdit(BaseInterface):
         return outputs
 
 
-def _hermes_sort_subspectra(in_file, out_file, ecc_ref=None):
+def hermes_sort_subspectra(nifti_mrs):
     """
     Sort HERMES DIM_EDIT spectra.
 
@@ -894,7 +880,7 @@ def _hermes_sort_subspectra(in_file, out_file, ecc_ref=None):
     from fsl_mrs.utils import mrs_io
     import numpy as np
 
-    nifti_mrs = mrs_io.read_FID(in_file)
+    nifti_mrs_preproc = nifti_mrs.copy()
 
     if 'DIM_DYN' in nifti_mrs.dim_tags:
         averaged = False
@@ -903,34 +889,19 @@ def _hermes_sort_subspectra(in_file, out_file, ecc_ref=None):
     
     # align DIM_DYN
     if not averaged:
-        nifti_mrs = nifti_mrs_proc.align(nifti_mrs, dim='DIM_DYN')
-        nifti_mrs = nifti_mrs_proc.average(nifti_mrs, 'DIM_DYN')
-    
-    # # ecc
-    # if ecc_ref:
-    #     ecc_ref = mrs_io.read_FID(ecc_ref)
-    #     nifti_mrs = nifti_mrs_proc.ecc(nifti_mrs, ecc_ref)
-
-    # # remove water
-    # nifti_mrs = nifti_mrs_proc.remove_peaks(nifti_mrs, (-.25, .25), 'ppm')
-
-    # # shift to creatine
-    # nifti_mrs = nifti_mrs_proc.shift_to_reference(
-    #     nifti_mrs, 
-    #     ppm_ref=3.027, 
-    #     peak_search=(2.9, 3.1)
-    #     )
+        nifti_mrs_preproc = nifti_mrs_proc.align(nifti_mrs_preproc, dim='DIM_DYN')
+        nifti_mrs_preproc = nifti_mrs_proc.average(nifti_mrs_preproc, 'DIM_DYN')
     
     # phase correction
-    nifti_mrs = nifti_mrs_proc.phase_correct(nifti_mrs, (2.9,3.1))
+    nifti_mrs_preproc = nifti_mrs_proc.phase_correct(nifti_mrs_preproc, (2.9,3.1))
 
     # yshift
-    nifti_mrs = hermes_align_y_edit(nifti_mrs)
+    nifti_mrs_preproc = hermes_align_y_edit(nifti_mrs_preproc)
 
     # Identify subspectra type (GABA_on = low NAA signal, GSH_on = low Asp signal)
     peak_naa = []
     peak_h20 = []
-    for subspectrum in split_edit_subspectra(nifti_mrs):
+    for subspectrum in split_edit_subspectra(nifti_mrs_preproc):
         # sum of NAA peak
         peak_naa.append(subspectrum.mrs().get_spec([2.2,1.8]).real.sum().real.max())
         # sum of Asp peak
@@ -956,9 +927,6 @@ def _hermes_sort_subspectra(in_file, out_file, ecc_ref=None):
                 .assign(pulse = lambda df_: df_.apply(which_pulse, axis=1))
                 )
 
-    #read file again
-    nifti_mrs = mrs_io.read_FID(in_file)
-
     # separate spectra
     subspectra_dict = {}
     for index, subspectra in enumerate(split_edit_subspectra(nifti_mrs)):
@@ -970,31 +938,31 @@ def _hermes_sort_subspectra(in_file, out_file, ecc_ref=None):
         dimension='DIM_EDIT'
         )
     
-    nifti_mrs.save(out_file)
-    
-    return out_file
+    return nifti_mrs
 
 
 class hermes_sort_subspectra_InputSpec(Base_NIFTI_MRS_InputSpec, optional_ecc_NIFTI_MRS_InputSpec):
     pass
 
-class HERMESSortSubspectra(BaseInterface):
+class HERMESSortSubspectra(Base_fsl_mrs_Interface):
     # Input and output specs
     input_spec = hermes_sort_subspectra_InputSpec
     output_spec = Base_NIFTI_MRS_OutputSpec
     
+    INTERFACE_NAME='hermesSort'
+
     def _run_interface(self, runtime):
 
         # output to tmp directory
+        self.inputs.out_file = super()._generate_out_file_name(self.inputs.in_file, self.inputs.out_file, self.INTERFACE_NAME)
         self.inputs.out_file = os.path.abspath(self.inputs.out_file)
 
+        from fsl_mrs.utils.preproc import nifti_mrs_proc
+
         # run function
-        self.inputs.out_file = _hermes_sort_subspectra(
+        self.inputs.out_file = mrs_io_decorator(self.inputs.out_file)(hermes_sort_subspectra)(
             # mandatory file_names
             self.inputs.in_file, 
-            self.inputs.out_file,
-            # optional file_names
-            self.inputs.ecc_ref
             )
         
         return runtime
@@ -1032,51 +1000,50 @@ class hermes_sum_OutputSpec(TraitedSpec):
         desc="NIFTI_MRS data. GSH On - GSH Off."
     )
 
-def io_hermes_edit_sum(in_file, out_dir):
+def hermes_edit_sum(nifti_mrs):
     """
     Get HERMES edit data.
     """
     from fsl_mrs.utils import mrs_io
     from fsl_mrs.utils.preproc import nifti_mrs_proc
     
-    extension = '.nii.gz'
-
-    nifti_mrs = mrs_io.read_FID(in_file)
     a,b,c,d = split_edit_subspectra(nifti_mrs)
 
     summation = nifti_mrs_proc.add(nifti_mrs_proc.add(a,b), nifti_mrs_proc.add(c,d))
     gaba = nifti_mrs_proc.subtract(nifti_mrs_proc.add(b, d), nifti_mrs_proc.add(c,a))
     gsh = nifti_mrs_proc.subtract(nifti_mrs_proc.add(c, d), nifti_mrs_proc.add(b,a))
 
-    summation_path = os.path.join(out_dir, 'summation' + extension)
-    gaba_path = os.path.join(out_dir, 'gaba' + extension)
-    gsh_path = os.path.join(out_dir, 'gsh' + extension)
-
-    summation.save(summation_path)
-    gaba.save(gaba_path)
-    gsh.save(gsh_path)
-
-    return summation_path, gaba_path, gsh_path
+    return summation, gaba, gsh
 
 
-class HERMES_Edit_Sum(BaseInterface):
+class HERMES_Edit_Sum(Base_fsl_mrs_Interface):
     # Input and output specs
     input_spec = hermes_sum_InputSpec
     output_spec = hermes_sum_OutputSpec
     
+    INTERFACE_NAME='hermesSum'
+
     def _run_interface(self, runtime):
 
+        if not isinstance(self.inputs.out_dir, str):
+            self.inputs.out_dir = os.getcwd()
+
         # output to tmp directory
-        if self.inputs.out_dir:
-            self.inputs.out_dir = os.path.abspath(self.inputs.out_dir)
-        else:
-            self.inputs.out_dir = os.path.abspath(os.getcwd())
+        self._summation = super()._generate_out_file_name(self.inputs.in_file, None, "sum")
+        self._summation  = os.path.abspath(os.path.join(self.inputs.out_dir, self._summation))
+
+        self._gaba = super()._generate_out_file_name(self.inputs.in_file, None, "gaba")
+        self._gaba  = os.path.abspath(os.path.join(self.inputs.out_dir, self._gaba))
+
+        self._gsh = super()._generate_out_file_name(self.inputs.in_file, None, "gsh")
+        self._gsh  = os.path.abspath(os.path.join(self.inputs.out_dir, self._gsh))
+
+        output_list = [self._summation, self._gaba, self._gsh]
 
         # run function
-        self._summation, self._gaba, self._gsh = io_hermes_edit_sum(
+        self._summation, self._gaba, self._gsh = mrs_io_decorator(output_list)(hermes_edit_sum)(
             # mandatory file_names
             self.inputs.in_file, 
-            self.inputs.out_dir,
             )
         
         return runtime
