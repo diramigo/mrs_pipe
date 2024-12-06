@@ -4,8 +4,6 @@ from nipype.interfaces.base import BaseInterface, BaseInterfaceInputSpec, Traite
 from fsl_mrs.core.nifti_mrs import NIFTI_MRS
 from fsl_mrs.core.basis import Basis
 
-# Functions
-
 class Base_fsl_mrs_Interface(BaseInterface):
     BIDS_KEY_VALUES = r"(sub-[a-zA-Z0-9]+)(_ses-[a-zA-Z0-9]+)?(_task-[a-zA-Z0-9]+)?(_acq-[a-zA-Z0-9]+)?(_nuc-[a-zA-Z0-9]+)?(_voi-[a-zA-Z0-9]+)?(_rec-[a-zA-Z0-9]+)?(_run-[a-zA-Z0-9]+)?(_echo-[a-zA-Z0-9]+)?(_inv-[a-zA-Z0-9]+)?"
     BIDS_DERIVATIVE =  r"(_desc-[a-zA-Z0-9]+)?"
@@ -39,8 +37,6 @@ class Base_fsl_mrs_Interface(BaseInterface):
             return interface_name + '.nii.gz'
         else:
             return out_file
-
-
 
 def mrs_io_decorator(out_file):
     def decorator(func):
@@ -499,6 +495,14 @@ class RemoveWater(Base_fsl_mrs_Interface):
     
     INTERFACE_NAME='removeH2O'
 
+    def __init__(self, **inputs):
+        super().__init__(**inputs)
+        os.environ["OMP_NUM_THREADS"] = "4" # export OMP_NUM_THREADS=4
+        os.environ["OPENBLAS_NUM_THREADS"] = "4" # export OPENBLAS_NUM_THREADS=4 
+        os.environ["MKL_NUM_THREADS"] = "6" # export MKL_NUM_THREADS=6
+        os.environ["VECLIB_MAXIMUM_THREADS"] = "4" # export VECLIB_MAXIMUM_THREADS=4
+        os.environ["NUMEXPR_NUM_THREADS"] = "6" # export NUMEXPR_NUM_THREADS=6
+
     def _run_interface(self, runtime):
 
         # output to tmp directory
@@ -506,6 +510,7 @@ class RemoveWater(Base_fsl_mrs_Interface):
         self.inputs.out_file = os.path.abspath(self.inputs.out_file)
 
         from fsl_mrs.utils.preproc import nifti_mrs_proc
+
 
         # run function
         self.inputs.out_file = mrs_io_decorator(self.inputs.out_file)(nifti_mrs_proc.remove_peaks)(
@@ -1055,3 +1060,5 @@ class HERMES_Edit_Sum(Base_fsl_mrs_Interface):
         outputs['gaba'] = self._gaba
         outputs['gsh'] = self._gsh
         return outputs
+    
+
