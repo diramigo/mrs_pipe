@@ -5,21 +5,25 @@ from fsl_mrs.core.nifti_mrs import NIFTI_MRS
 from fsl_mrs.core.basis import Basis
 
 class Base_fsl_mrs_Interface(BaseInterface):
+    # BIDS pattern to name files
     BIDS_KEY_VALUES = r"(sub-[a-zA-Z0-9]+)(_ses-[a-zA-Z0-9]+)?(_task-[a-zA-Z0-9]+)?(_acq-[a-zA-Z0-9]+)?(_nuc-[a-zA-Z0-9]+)?(_voi-[a-zA-Z0-9]+)?(_rec-[a-zA-Z0-9]+)?(_run-[a-zA-Z0-9]+)?(_echo-[a-zA-Z0-9]+)?(_inv-[a-zA-Z0-9]+)?"
     BIDS_DERIVATIVE =  r"(_desc-[a-zA-Z0-9]+)?"
     BIDS_SUFFIX_EXTENSION = r"(_[a-zA-Z0-9]+\.nii)(\.gz)?"
     BIDS_PATTERN = BIDS_KEY_VALUES+BIDS_DERIVATIVE+BIDS_SUFFIX_EXTENSION
+
     def _is_bids_valid(self, filename):
+        # identify if filename is bids valid
         return bool(re.match(self.BIDS_PATTERN, os.path.basename(filename)))
     
     def _generate_bids_derivative_name(self, filename, desc):
+        # generate a bids derivative name
         bids_key_values = "".join(re.findall(self.BIDS_KEY_VALUES, filename)[-1])
         bids_suffix_extension = "".join(re.findall(self.BIDS_SUFFIX_EXTENSION, filename)[-1])
         bids_desc = f'_desc-{desc}'
         return bids_key_values + bids_desc + bids_suffix_extension
     
     def _generate_out_file_name(self, in_file, out_file, interface_name):
-        
+        # given parameters, choose a name for output 
         out_bids_compliant = False
         out_is_str = False
         if isinstance(out_file, str):
@@ -39,6 +43,7 @@ class Base_fsl_mrs_Interface(BaseInterface):
             return out_file
 
 def mrs_io_decorator(out_file):
+    # wrap an fsl_mrs command between read and write functions
     def decorator(func):
         def wrapper(*args, **kwargs):
             from fsl_mrs.utils import mrs_io
@@ -136,34 +141,67 @@ class Model_NIFTI_MRS_InputSpec(BaseInterfaceInputSpec):
 
 # Interfaces
 
-# ------------------ Align ------------------
-class AlignInputSpec(Base_NIFTI_MRS_InputSpec, Dim_NIFTI_MRS_InputSpec, optional_ppm_NIFTI_MRS_InputSpec):
-    # TODO: Add optional parameters
-    # Optional inputs
-    window=traits.Int(desc="Window size.", default=None, mandatory=False)
-    # target=None,
-    # ppmlim=traits.Tuple((traits.Float(), traits.Float()), desc="ppm search limits.", default=None, mandatory=False)
-    niter=traits.Int(desc="niter: Number of total iterations", default=2, mandatory=False)
-    # figure=False,
-    # report=None,
-    # report_all=False,
-    # :param NIFTI_MRS data: Data to align
-    # :param str dim: NIFTI-MRS dimension tag, or 'all'
-    # :param int window: Window size.
-    # :param target: Optional target FID
-    # :param ppmlim: ppm search limits.
-    # :param int niter: Number of total iterations
-    # :param figure: True to show figure.
-    # :param report: Provide output location as path to generate report
-    # :param report_all: True to output all indicies
+# ------------------ CoilCombine ------------------
+class CoilCombineInputSpec(BaseInterfaceInputSpec):
+    in_file = File(
+        exists=True,
+        desc="NIFTI_MRS data.", 
+        mandatory=True
+        )
+    out_file = File(
+        desc="NIFTI_MRS data.",
+        mandatory=False
+        )
+    reference = File(
+        desc="NIFTI_MRS water reference data.",
+        mandatory=False,
+        default=None
+    )
+    noise = traits.List(
+        traits.Float,
+        default=None,
+        desc="Supply noise (NCoils x M) to estimate coil covariance (overridden by no_prewhiten)",
+    )
+    covariance = traits.List(
+        traits.Float,
+        default=None,
+        desc="Supply coil-covariance for prewhitening (overridden by noise or no_prewhiten)",
+    )
+    no_prewiten = traits.Bool(
+        desc="True to disable prewhitening."
+        defualt=False,
+        mandatory=False
+    )
+    report = traits.Either(
+        traits.Bool, traits.Directory,
+        desc="Provide output location as path to generate report. If set to True, uses working directory.",
+        default=False,
+        mandatory=False
+    )
+    report_all = traits.Bool(
+        desc="True to output all indicies.",
+        defualt=False,
+        mandatory=False
+        )
 
-
-class Align(Base_fsl_mrs_Interface):
-    # Input and output specs
-    input_spec = AlignInputSpec
-    output_spec = Base_NIFTI_MRS_OutputSpec
+class CoilCombineOutputSpec(TraitedSpec):
+    out_file = File(
+        exists=True,
+        desc="NIFTI_MRS data.",
+        mandatory=True
+        )
+    report = traits.Directory(
+        exists=True,
+        desc="Preprocessing report.",
+        mandatory=False
+    )
     
-    INTERFACE_NAME='align'
+class CoilCombine(Base_fsl_mrs_Interface):
+    # Input and output specs
+    input_spec = CoilCombineInputSpec
+    output_spec = CoilCombineOutputSpec
+    
+    INTERFACE_NAME='coilcombine'
 
     def _run_interface(self, runtime):
 
@@ -171,17 +209,24 @@ class Align(Base_fsl_mrs_Interface):
         self.inputs.out_file = super()._generate_out_file_name(self.inputs.in_file, self.inputs.out_file, self.INTERFACE_NAME)
         self.inputs.out_file = os.path.abspath(self.inputs.out_file)
 
+        # report
+        if self.inputs.report:
+            self.inputs.report = os.path.abspath(self.inputs.report)
+
         from fsl_mrs.utils.preproc import nifti_mrs_proc
 
         # run function
-        self.inputs.out_file = mrs_io_decorator(self.inputs.out_file)(nifti_mrs_proc.align)(
+        self.inputs.out_file = mrs_io_decorator(self.inputs.out_file)(nifti_mrs_proc.coilcombine)(
             # mandatory file_names
             self.inputs.in_file, 
-            # mandatory parameters
-            dim=self.inputs.dim,
+            # optional file names
+            reference=self.inputs.reference,
             # optional parameters
-            ppmlim=self.inputs.ppmlim
-            # TODO: Add optional parameters
+            noise=self.inputs.noise,
+            covariance=self.inputs.covariance,
+            no_prewhiten=self.inputs.no_prewhiten,
+            report=self.inputs.report,
+            report_all=self.inputs.report_all
             )
         
         return runtime
@@ -190,18 +235,53 @@ class Align(Base_fsl_mrs_Interface):
         # get outputs
         outputs = self._outputs().get()
         outputs['out_file'] = self.inputs.out_file
+        outputs['report'] = self.inputs.report
         return outputs
 
-# ------------------ Average ------------------
 
-class AverageInputSpec(Base_NIFTI_MRS_InputSpec, Dim_NIFTI_MRS_InputSpec):
-    pass
+class AverageInputSpec(BaseInterfaceInputSpec):
+    in_file = File(
+        exists=True,
+        desc="NIFTI_MRS data.", 
+        mandatory=True
+        )
+    out_file = File(
+        desc="NIFTI_MRS data.",
+        mandatory=False
+        )
+    dim = traits.Enum(
+        "DIM_DYN", "DIM_EDIT", 'all',
+        desc="NIFTI-MRS dimension tag, or 'all'.",
+        mandatory=True
+    )
+    report = traits.Either(
+        traits.Bool, traits.Directory,
+        desc="Provide output location as path to generate report. If set to True, uses working directory.",
+        default=False,
+        mandatory=False
+    )
+    report_all = traits.Bool(
+        desc="True to output all indicies.",
+        defualt=False,
+        mandatory=False
+        )
 
+class AverageOutputSpec(TraitedSpec):
+    out_file = File(
+        exists=True,
+        desc="NIFTI_MRS data.",
+        mandatory=True
+        )
+    report = traits.Directory(
+        exists=True,
+        desc="Preprocessing report.",
+        mandatory=False
+    )
 
 class Average(Base_fsl_mrs_Interface):
     # Input and output specs
     input_spec = AverageInputSpec
-    output_spec = Base_NIFTI_MRS_OutputSpec
+    output_spec = AverageOutputSpec
     
     INTERFACE_NAME='average'
 
@@ -210,6 +290,10 @@ class Average(Base_fsl_mrs_Interface):
         # output to tmp directory
         self.inputs.out_file = super()._generate_out_file_name(self.inputs.in_file, self.inputs.out_file, self.INTERFACE_NAME)
         self.inputs.out_file = os.path.abspath(self.inputs.out_file)
+
+        # report
+        if self.inputs.report:
+            self.inputs.report = os.path.abspath(self.inputs.report)
 
         from fsl_mrs.utils.preproc import nifti_mrs_proc
 
@@ -229,9 +313,110 @@ class Average(Base_fsl_mrs_Interface):
         # get outputs
         outputs = self._outputs().get()
         outputs['out_file'] = self.inputs.out_file
+        outputs['report'] = self.inputs.report
         return outputs
+
+
+class AlignInputSpec(Base_fsl_mrs_Interface):
+    in_file = File(
+        exists=True,
+        desc="NIFTI_MRS data.", 
+        mandatory=True
+        )
+    out_file = File(
+        desc="NIFTI_MRS data.",
+        mandatory=False
+        )
+    dim = traits.Enum(
+        "DIM_DYN", "DIM_EDIT", 'all',
+        desc="NIFTI-MRS dimension tag, or 'all'.",
+        mandatory=True
+        )
+    window = traits.Int(
+        desc="Window size.",
+        mandatory=False
+        default=None
+        )
+    # target: I am not sure how this argument is supposed to work.
+    ppmlim = traits.Tuple(
+        (traits.Float, traits.Float), 
+        desc="ppm search limits.", 
+        mandatory=False,
+        default=None
+        )
+    niter = traits.Int(
+        desc="niter: Number of total iterations", 
+        default=2, 
+        mandatory=False
+        )
+    report = traits.Either(
+        traits.Bool, traits.Directory,
+        desc="Provide output location as path to generate report. If set to True, uses working directory.",
+        default=False,
+        mandatory=False
+    )
+    report_all = traits.Bool(
+        desc="True to output all indicies.",
+        defualt=False,
+        mandatory=False
+        )
+
+class AlignOutputSpec(TraitedSpec):
+    out_file = File(
+        exists=True,
+        desc="NIFTI_MRS data.",
+        mandatory=True
+        )
+    report = traits.Directory(
+        exists=True,
+        desc="Preprocessing report.",
+        mandatory=False
+    )
+
+
+class Align(Base_fsl_mrs_Interface):
+    # Input and output specs
+    input_spec = AlignInputSpec
+    output_spec = AlignOutputSpec
     
-# ------------------ EddyCurrentCorrection ------------------
+    INTERFACE_NAME='align'
+
+    def _run_interface(self, runtime):
+
+        # output to tmp directory
+        self.inputs.out_file = super()._generate_out_file_name(self.inputs.in_file, self.inputs.out_file, self.INTERFACE_NAME)
+        self.inputs.out_file = os.path.abspath(self.inputs.out_file)
+
+        # report
+        if self.inputs.report:
+            self.inputs.report = os.path.abspath(self.inputs.report)
+
+        from fsl_mrs.utils.preproc import nifti_mrs_proc
+
+        # run function
+        self.inputs.out_file = mrs_io_decorator(self.inputs.out_file)(nifti_mrs_proc.align)(
+            # mandatory file_names
+            self.inputs.in_file, 
+            # mandatory parameters
+            self.inputs.dim,
+            # optional parameters
+            window=self.inputs.window,
+            ppmlim=self.inputs.ppmlim,
+            niter=self.inputs.niter,
+            report=self.inputs.report,
+            report_all=self.inputs.report_all
+            )
+        
+        return runtime
+
+    def _list_outputs(self):
+        # get outputs
+        outputs = self._outputs().get()
+        outputs['out_file'] = self.inputs.out_file
+        outputs['report'] = self.inputs.report
+        return outputs
+
+
 class EddyCurrentCorrectionInputSpec(Base_NIFTI_MRS_InputSpec, Ref_NIFTI_MRS_InputSpec):
     pass
 
