@@ -168,7 +168,7 @@ class CoilCombineInputSpec(BaseInterfaceInputSpec):
         desc="Supply coil-covariance for prewhitening (overridden by noise or no_prewhiten)",
     )
     no_prewiten = traits.Bool(
-        desc="True to disable prewhitening."
+        desc="True to disable prewhitening.",
         defualt=False,
         mandatory=False
     )
@@ -317,7 +317,7 @@ class Average(Base_fsl_mrs_Interface):
         return outputs
 
 
-class AlignInputSpec(Base_fsl_mrs_Interface):
+class AlignInputSpec(BaseInterfaceInputSpec):
     in_file = File(
         exists=True,
         desc="NIFTI_MRS data.", 
@@ -332,32 +332,35 @@ class AlignInputSpec(Base_fsl_mrs_Interface):
         desc="NIFTI-MRS dimension tag, or 'all'.",
         mandatory=True
         )
-    window = traits.Int(
+    window = traits.Either(
+        None, traits.Int,
         desc="Window size.",
-        mandatory=False
-        default=None
-        )
-    # target: I am not sure how this argument is supposed to work.
-    ppmlim = traits.Tuple(
-        (traits.Float, traits.Float), 
-        desc="ppm search limits.", 
+        usedefault=True,
         mandatory=False,
-        default=None
+        )
+    ppmlim = traits.Either(
+        None,
+        traits.Tuple((traits.Float, traits.Float)),
+        desc="ppm search limits.", 
+        usedefault=True,
+        mandatory=False,
         )
     niter = traits.Int(
+        2,
         desc="niter: Number of total iterations", 
-        default=2, 
+        usedefault=True, 
         mandatory=False
         )
     report = traits.Either(
-        traits.Bool, traits.Directory,
+        False, traits.Directory,
         desc="Provide output location as path to generate report. If set to True, uses working directory.",
-        default=False,
+        usedefault=True,
         mandatory=False
     )
     report_all = traits.Bool(
+        False,
         desc="True to output all indicies.",
-        defualt=False,
+        usedefault=True,
         mandatory=False
         )
 
@@ -367,8 +370,9 @@ class AlignOutputSpec(TraitedSpec):
         desc="NIFTI_MRS data.",
         mandatory=True
         )
-    report = traits.Directory(
-        exists=True,
+    report = traits.Either(
+        False,
+        traits.Directory(exists=True),
         desc="Preprocessing report.",
         mandatory=False
     )
@@ -398,8 +402,8 @@ class Align(Base_fsl_mrs_Interface):
             # mandatory file_names
             self.inputs.in_file, 
             # mandatory parameters
-            self.inputs.dim,
-            # optional parameters
+            dim=self.inputs.dim,
+            # # optional parameters
             window=self.inputs.window,
             ppmlim=self.inputs.ppmlim,
             niter=self.inputs.niter,
@@ -833,7 +837,7 @@ def hermes_ref_remove_zero_mean_transients(ref):
     return ref
 
 
-class _HERMESRefRemoveZeroMeanTransients(Base_fsl_mrs_Interface):
+class HERMESRefRemoveZeroMeanTransients(Base_fsl_mrs_Interface):
     """
     For TwinsMX HERMES ref data. Can't guarantee that this is a necesarry or useful step for other HERMES data.
     """
@@ -1195,13 +1199,28 @@ def hermes_edit_sum(nifti_mrs):
     Get HERMES edit data.
     """
     from fsl_mrs.utils import mrs_io
+    from fsl_mrs.core import nifti_mrs as nifti_mrs_tools
     from fsl_mrs.utils.preproc import nifti_mrs_proc
     
     a,b,c,d = split_edit_subspectra(nifti_mrs)
-
-    summation = nifti_mrs_proc.add(nifti_mrs_proc.add(a,b), nifti_mrs_proc.add(c,d))
-    gaba = nifti_mrs_proc.subtract(nifti_mrs_proc.add(b, d), nifti_mrs_proc.add(c,a))
-    gsh = nifti_mrs_proc.subtract(nifti_mrs_proc.add(c, d), nifti_mrs_proc.add(b,a))
+    
+    # We have to merge dimensions instead of adding individual spectra, in order to eliminate the "DIM_EDIT" dimension with the add function.
+    # Otherwise, we won't be able to visualize the output with the `mrs_tools vis` cli command.
+    gaba_on = nifti_mrs_tools.merge([b, d], dimension='DIM_EDIT')
+    gaba_off = nifti_mrs_tools.merge([c, a], dimension='DIM_EDIT')
+    gaba_on = nifti_mrs_proc.add(gaba_on, dim='DIM_EDIT')
+    gaba_off = nifti_mrs_proc.add(gaba_off, dim='DIM_EDIT')
+    gaba = nifti_mrs_proc.subtract(gaba_on, gaba_off)
+    
+    gsh_on = nifti_mrs_tools.merge([c, d], dimension='DIM_EDIT')
+    gsh_off = nifti_mrs_tools.merge([b, a], dimension='DIM_EDIT')
+    gsh_on = nifti_mrs_proc.add(gsh_on, dim='DIM_EDIT')
+    gsh_off = nifti_mrs_proc.add(gsh_off, dim='DIM_EDIT')
+    gsh = nifti_mrs_proc.subtract(gsh_on, gsh_off)
+    
+    # The add function won't allow more than 2 spectra when we specify a dimension, so we have to do the summation on multiple steps 
+    # We are summing the gaba_on and gaba_off, but we could have used the gsh_off and gsh_on.
+    summation = nifti_mrs_proc.add(gaba_on, gaba_off)
 
     return summation, gaba, gsh
 
