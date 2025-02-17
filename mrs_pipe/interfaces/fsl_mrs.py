@@ -1,5 +1,6 @@
 import os
 import re
+from glob import glob
 from nipype.interfaces.base import BaseInterface, BaseInterfaceInputSpec, TraitedSpec, traits, File
 from fsl_mrs.core.nifti_mrs import NIFTI_MRS
 from fsl_mrs.core.basis import Basis
@@ -172,12 +173,12 @@ class CoilCombineInputSpec(BaseInterfaceInputSpec):
         defualt=False,
         mandatory=False
     )
-    report = traits.Either(
-        traits.Bool, traits.Directory,
-        desc="Provide output location as path to generate report. If set to True, uses working directory.",
-        default=False,
-        mandatory=False
-    )
+    report = traits.Bool(
+        True,
+        desc="Generate report.",
+        usedefault=True,
+        mandatory=True
+        )
     report_all = traits.Bool(
         desc="True to output all indicies.",
         defualt=False,
@@ -190,8 +191,7 @@ class CoilCombineOutputSpec(TraitedSpec):
         desc="NIFTI_MRS data.",
         mandatory=True
         )
-    report = traits.Directory(
-        exists=True,
+    report = traits.File(
         desc="Preprocessing report.",
         mandatory=False
     )
@@ -211,7 +211,9 @@ class CoilCombine(Base_fsl_mrs_Interface):
 
         # report
         if self.inputs.report:
-            self.inputs.report = os.path.abspath(self.inputs.report)
+            self._mrsreport = os.path.abspath('.')
+        else:
+            self._mrsreport = None
 
         from fsl_mrs.utils.preproc import nifti_mrs_proc
 
@@ -225,17 +227,19 @@ class CoilCombine(Base_fsl_mrs_Interface):
             noise=self.inputs.noise,
             covariance=self.inputs.covariance,
             no_prewhiten=self.inputs.no_prewhiten,
-            report=self.inputs.report,
+            report=self._mrsreport,
             report_all=self.inputs.report_all
             )
         
+        if self.inputs.report:
+            self._mrsreport = os.path.abspath('./'+glob('report*.html', root_dir=self._mrsreport)[0])
         return runtime
 
     def _list_outputs(self):
         # get outputs
         outputs = self._outputs().get()
         outputs['out_file'] = self.inputs.out_file
-        outputs['report'] = self.inputs.report
+        outputs['report'] = self._mrsreport
         return outputs
 
 
@@ -254,12 +258,12 @@ class AverageInputSpec(BaseInterfaceInputSpec):
         desc="NIFTI-MRS dimension tag, or 'all'.",
         mandatory=True
     )
-    report = traits.Either(
-        traits.Bool, traits.Directory,
-        desc="Provide output location as path to generate report. If set to True, uses working directory.",
-        default=False,
-        mandatory=False
-    )
+    report = traits.Bool(
+        True,
+        desc="Generate report.",
+        usedefault=True,
+        mandatory=True
+        )
     report_all = traits.Bool(
         desc="True to output all indicies.",
         defualt=False,
@@ -272,8 +276,7 @@ class AverageOutputSpec(TraitedSpec):
         desc="NIFTI_MRS data.",
         mandatory=True
         )
-    report = traits.Directory(
-        exists=True,
+    report = traits.File(
         desc="Preprocessing report.",
         mandatory=False
     )
@@ -293,7 +296,9 @@ class Average(Base_fsl_mrs_Interface):
 
         # report
         if self.inputs.report:
-            self.inputs.report = os.path.abspath(self.inputs.report)
+            self._mrsreport = os.path.abspath('.')
+        else:
+            self._mrsreport = None
 
         from fsl_mrs.utils.preproc import nifti_mrs_proc
 
@@ -302,18 +307,22 @@ class Average(Base_fsl_mrs_Interface):
             # mandatory file_names
             self.inputs.in_file, 
             # mandatory parameters
-            dim=self.inputs.dim
+            dim=self.inputs.dim,
             # optional parameters
-            # TODO: Add optional parameters
+            report=self._mrsreport,
+            report_all=self.inputs.report_all
             )
         
+        if self.inputs.report:
+            self._mrsreport = os.path.abspath('./'+glob('report*.html', root_dir=self._mrsreport)[0])
+
         return runtime
 
     def _list_outputs(self):
         # get outputs
         outputs = self._outputs().get()
         outputs['out_file'] = self.inputs.out_file
-        outputs['report'] = self.inputs.report
+        outputs['report'] = self._mrsreport
         return outputs
 
 
@@ -351,12 +360,12 @@ class AlignInputSpec(BaseInterfaceInputSpec):
         usedefault=True, 
         mandatory=False
         )
-    report = traits.Either(
-        False, traits.Directory,
-        desc="Provide output location as path to generate report. If set to True, uses working directory.",
+    report = traits.Bool(
+        True,
+        desc="Generate report.",
         usedefault=True,
-        mandatory=False
-    )
+        mandatory=True
+        )
     report_all = traits.Bool(
         False,
         desc="True to output all indicies.",
@@ -370,9 +379,7 @@ class AlignOutputSpec(TraitedSpec):
         desc="NIFTI_MRS data.",
         mandatory=True
         )
-    report = traits.Either(
-        False,
-        traits.Directory(exists=True),
+    report = traits.File(
         desc="Preprocessing report.",
         mandatory=False
     )
@@ -393,7 +400,9 @@ class Align(Base_fsl_mrs_Interface):
 
         # report
         if self.inputs.report:
-            self.inputs.report = os.path.abspath(self.inputs.report)
+            self._mrsreport = os.path.abspath('.')
+        else:
+            self._mrsreport = None
 
         from fsl_mrs.utils.preproc import nifti_mrs_proc
 
@@ -407,9 +416,12 @@ class Align(Base_fsl_mrs_Interface):
             window=self.inputs.window,
             ppmlim=self.inputs.ppmlim,
             niter=self.inputs.niter,
-            report=self.inputs.report,
+            report=self._mrsreport,
             report_all=self.inputs.report_all
             )
+
+        if self.inputs.report:
+            self._mrsreport = os.path.abspath('./'+glob('report*.html', root_dir=self._mrsreport)[0])
         
         return runtime
 
@@ -417,17 +429,52 @@ class Align(Base_fsl_mrs_Interface):
         # get outputs
         outputs = self._outputs().get()
         outputs['out_file'] = self.inputs.out_file
-        outputs['report'] = self.inputs.report
+        outputs['report'] = self._mrsreport
         return outputs
 
 
-class EddyCurrentCorrectionInputSpec(Base_NIFTI_MRS_InputSpec, Ref_NIFTI_MRS_InputSpec):
-    pass
+class EddyCurrentCorrectionInputSpec(BaseInterfaceInputSpec):
+    in_file = File(
+        exists=True,
+        desc="NIFTI_MRS data: Data to eddy current correct.", 
+        mandatory=True
+        )
+    ref = File(
+        exists=True,
+        desc="NIFTI_MRS reference: reference dataset to calculate phase.", 
+        mandatory=True
+        )
+    out_file = File(
+        desc="NIFTI_MRS data.",
+        mandatory=False
+        )
+    report = traits.Bool(
+        True,
+        desc="Generate report.",
+        usedefault=True,
+        mandatory=True
+        )
+    report_all = traits.Bool(
+        False,
+        desc="True to output all indicies.",
+        usedefault=True,
+        mandatory=False
+        )
 
+class EddyCurrentCorrectionOutputSpec(TraitedSpec):
+    out_file = File(
+        exists=True,
+        desc="NIFTI_MRS data.",
+        mandatory=True
+        )
+    report = traits.File(
+        desc="Preprocessing report.",
+        mandatory=False
+    )
 
 class EddyCurrentCorrection(Base_fsl_mrs_Interface):
     input_spec = EddyCurrentCorrectionInputSpec
-    output_spec = Base_NIFTI_MRS_OutputSpec
+    output_spec = EddyCurrentCorrectionOutputSpec
     
     INTERFACE_NAME='ecc'
 
@@ -436,6 +483,12 @@ class EddyCurrentCorrection(Base_fsl_mrs_Interface):
         # output to tmp directory
         self.inputs.out_file = super()._generate_out_file_name(self.inputs.in_file, self.inputs.out_file, self.INTERFACE_NAME)
         self.inputs.out_file = os.path.abspath(self.inputs.out_file)
+        
+        # report
+        if self.inputs.report:
+            self._mrsreport = os.path.abspath('.')
+        else:
+            self._mrsreport = None
 
         from fsl_mrs.utils.preproc import nifti_mrs_proc
 
@@ -443,27 +496,84 @@ class EddyCurrentCorrection(Base_fsl_mrs_Interface):
         self.inputs.out_file = mrs_io_decorator(self.inputs.out_file)(nifti_mrs_proc.ecc)(
             # mandatory file_names
             self.inputs.in_file, 
-            self.inputs.ref
+            self.inputs.ref,
             # optional parameters
-            # TODO: Add optional parameters
+            report=self._mrsreport,
+            report_all=self.inputs.report_all
             )
         
+        if self.inputs.report:
+            self._mrsreport = os.path.abspath('./'+glob('report*.html', root_dir=self._mrsreport)[0])
         return runtime
 
     def _list_outputs(self):
         # get outputs
         outputs = self._outputs().get()
         outputs['out_file'] = self.inputs.out_file
+        outputs['report'] = self._mrsreport
         return outputs
 
 # ------------------ PhaseCorrect ------------------
-class PhaseCorrectInputSpec(Base_NIFTI_MRS_InputSpec, ppm_NIFTI_MRS_InputSpec):
-    pass
+class PhaseCorrectInputSpec(BaseInterfaceInputSpec):
+    in_file = File(
+        exists=True,
+        desc="NIFTI_MRS data.", 
+        mandatory=True
+        )
+    out_file = File(
+        desc="NIFTI_MRS data.",
+        mandatory=False
+        )
 
+    ppmlim = traits.Either(
+        None,
+        traits.Tuple((traits.Float, traits.Float)),
+        desc="Search for peak between limits", 
+        usedefault=True,
+        mandatory=False,
+        )
+    
+    hlsvd = traits.Bool(
+        False,
+        desc="Use HLSVD to remove peaks outside the ppmlim.",
+        usedefault=True,
+        mandatory=False
+        )
+    use_avg = traits.Bool(
+        False,
+        desc="If multiple spectra in higher dimensions, use the average of all the higher dimension spectra to calculate phase correction.",
+        usedefault=True,
+        mandatory=False
+        )
+    
+    report = traits.Bool(
+        True,
+        desc="Generate report.",
+        usedefault=True,
+        mandatory=True
+        )
+    report_all = traits.Bool(
+        False,
+        desc="True to output all indicies.",
+        usedefault=True,
+        mandatory=False
+        )
+    
+
+class PhaseCorrectOutputSpec(TraitedSpec):
+    out_file = File(
+        exists=True,
+        desc="NIFTI_MRS data.",
+        mandatory=True
+        )
+    report = traits.File(
+        desc="Preprocessing report.",
+        mandatory=False
+    )
 
 class PhaseCorrect(Base_fsl_mrs_Interface):
     input_spec = PhaseCorrectInputSpec
-    output_spec = Base_NIFTI_MRS_OutputSpec
+    output_spec = PhaseCorrectOutputSpec
     
     INTERFACE_NAME='phasecorrrect'
 
@@ -472,6 +582,12 @@ class PhaseCorrect(Base_fsl_mrs_Interface):
         # output to tmp directory
         self.inputs.out_file = super()._generate_out_file_name(self.inputs.in_file, self.inputs.out_file, self.INTERFACE_NAME)
         self.inputs.out_file = os.path.abspath(self.inputs.out_file)
+        
+        # report
+        if self.inputs.report:
+            self._mrsreport = os.path.abspath('.')
+        else:
+            self._mrsreport = None
 
         from fsl_mrs.utils.preproc import nifti_mrs_proc
 
@@ -480,23 +596,76 @@ class PhaseCorrect(Base_fsl_mrs_Interface):
             # mandatory file_names
             self.inputs.in_file, 
             # mandatory parameters
-            ppmlim=self.inputs.ppmlim
+            ppmlim=self.inputs.ppmlim,
             # optional parameters
-            # TODO: Add optional parameters
+            hlsvd=self.inputs.hlsvd,
+            use_avg=self.inputs.use_avg,
+            report=self._mrsreport,
+            report_all=self.inputs.report_all
             )
-        
+
+        if self.inputs.report:
+            self._mrsreport = os.path.abspath('./'+glob('report*.html', root_dir=self._mrsreport)[0])
         return runtime
 
     def _list_outputs(self):
         # get outputs
         outputs = self._outputs().get()
         outputs['out_file'] = self.inputs.out_file
+        outputs['report'] = self._mrsreport
         return outputs
+
+class PhaseCorrectCreatineInputSpec(BaseInterfaceInputSpec):
+    in_file = File(
+        exists=True,
+        desc="NIFTI_MRS data.", 
+        mandatory=True
+        )
+    out_file = File(
+        desc="NIFTI_MRS data.",
+        mandatory=False
+        )
+    hlsvd = traits.Bool(
+        False,
+        desc="Use HLSVD to remove peaks outside the ppmlim.",
+        usedefault=True,
+        mandatory=False
+        )
+    use_avg = traits.Bool(
+        False,
+        desc="If multiple spectra in higher dimensions, use the average of all the higher dimension spectra to calculate phase correction.",
+        usedefault=True,
+        mandatory=False
+        )
+    
+    report = traits.Bool(
+        True,
+        desc="Generate report.",
+        usedefault=True,
+        mandatory=True
+        )
+    report_all = traits.Bool(
+        False,
+        desc="True to output all indicies.",
+        usedefault=True,
+        mandatory=False
+        )
     
 
+class PhaseCorrectCreatineOutputSpec(TraitedSpec):
+    out_file = File(
+        exists=True,
+        desc="NIFTI_MRS data.",
+        mandatory=True
+        )
+    report = traits.File(
+        desc="Preprocessing report.",
+        mandatory=False
+    )
+
 class PhaseCorrect_Creatine_ppmlim(Base_fsl_mrs_Interface):
-    input_spec = Base_NIFTI_MRS_InputSpec
-    output_spec = Base_NIFTI_MRS_OutputSpec
+    input_spec = PhaseCorrectCreatineInputSpec
+    output_spec = PhaseCorrectCreatineOutputSpec
     
     INTERFACE_NAME='phasecorrectCr'
 
@@ -505,6 +674,12 @@ class PhaseCorrect_Creatine_ppmlim(Base_fsl_mrs_Interface):
         # output to tmp directory
         self.inputs.out_file = super()._generate_out_file_name(self.inputs.in_file, self.inputs.out_file, self.INTERFACE_NAME)
         self.inputs.out_file = os.path.abspath(self.inputs.out_file)
+        
+        # report
+        if self.inputs.report:
+            self._mrsreport = os.path.abspath('.')
+        else:
+            self._mrsreport = None
 
         from fsl_mrs.utils.preproc import nifti_mrs_proc
 
@@ -513,39 +688,86 @@ class PhaseCorrect_Creatine_ppmlim(Base_fsl_mrs_Interface):
             # mandatory file_names
             self.inputs.in_file, 
             # mandatory parameters
-            ppmlim=(2.9,3.1)
+            ppmlim=(2.9,3.1),
             # optional parameters
-            # TODO: Add optional parameters
+            hlsvd=self.inputs.hlsvd,
+            use_avg=self.inputs.use_avg,
+            report=self._mrsreport,
+            report_all=self.inputs.report_all
             )
         
+        if self.inputs.report:
+            self._mrsreport = os.path.abspath('./'+glob('report*.html', root_dir=self._mrsreport)[0])
         return runtime
 
     def _list_outputs(self):
         # get outputs
         outputs = self._outputs().get()
         outputs['out_file'] = self.inputs.out_file
+        outputs['report'] = self._mrsreport
         return outputs
     
     
-# ------------------ ShiftToReference ------------------
-class ppm_ref_InputSpec(BaseInterfaceInputSpec):
-    ppm_ref = traits.Float(
-        desc="Reference shift that peak will be moved to.", 
+
+class ShiftToReferenceInputSpec(BaseInterfaceInputSpec):
+    in_file = File(
+        exists=True,
+        desc="NIFTI_MRS data.", 
         mandatory=True
         )
-    peak_search = traits.Tuple(
-        (traits.Float,traits.Float), 
-        desc="Search for peak between these ppm limits e.g. (2.8, 3.2) for tCr.", 
+    out_file = File(
+        desc="NIFTI_MRS data.",
+        mandatory=False
+        )
+    ppm_ref = traits.Float(
+        desc="Reference shift that peak will be moved to",
         mandatory=True
+        )   
+    peak_search = traits.Either(
+        traits.Tuple((traits.Float, traits.Float)),
+        desc="Search for peak between these ppm limits e.g. (2.8, 3.2) for tCr.", 
+        mandatory=True,
+        )
+    
+
+    use_avg = traits.Bool(
+        False,
+        desc="If multiple spectra in higher dimensions, use the average of all the higher dimension spectra to calculate phase correction.",
+        usedefault=True,
+        mandatory=False
+        )
+    
+    report = traits.Bool(
+        True,
+        desc="Generate report.",
+        usedefault=True,
+        mandatory=True
+        )
+    report_all = traits.Bool(
+        False,
+        desc="True to output all indicies.",
+        usedefault=True,
+        mandatory=False
         )
 
-class ShiftToReferenceInputSpec(Base_NIFTI_MRS_InputSpec, ppm_ref_InputSpec):
-    pass
+
+
+class ShiftToReferenceOutputSpec(TraitedSpec):
+    out_file = File(
+        exists=True,
+        desc="NIFTI_MRS data.",
+        mandatory=True
+        )
+    report = traits.File(
+        desc="Preprocessing report.",
+        mandatory=False
+    )
+
 
 
 class ShiftToReference(Base_fsl_mrs_Interface):
     input_spec = ShiftToReferenceInputSpec
-    output_spec = Base_NIFTI_MRS_OutputSpec
+    output_spec = ShiftToReferenceOutputSpec
     
     INTERFACE_NAME='shift2reference'
 
@@ -554,6 +776,12 @@ class ShiftToReference(Base_fsl_mrs_Interface):
         # output to tmp directory
         self.inputs.out_file = super()._generate_out_file_name(self.inputs.in_file, self.inputs.out_file, self.INTERFACE_NAME)
         self.inputs.out_file = os.path.abspath(self.inputs.out_file)
+
+        # report
+        if self.inputs.report:
+            self._mrsreport = os.path.abspath('.')
+        else:
+            self._mrsreport = None
 
         from fsl_mrs.utils.preproc import nifti_mrs_proc
 
@@ -565,21 +793,69 @@ class ShiftToReference(Base_fsl_mrs_Interface):
             ppm_ref=self.inputs.ppm_ref,
             peak_search=self.inputs.peak_search,
             # optional parameters
-            # TODO: Add optional parameters
+            use_avg=self.inputs.use_avg,
+            report=self._mrsreport,
+            report_all=self.inputs.report_all
             )
         
+        if self.inputs.report:
+            self._mrsreport = glob('report*.html', root_dir=self._mrsreport)[0]
+
         return runtime
 
     def _list_outputs(self):
         # get outputs
         outputs = self._outputs().get()
         outputs['out_file'] = self.inputs.out_file
+        outputs['report'] = self._mrsreport
         return outputs
+
+
+class ShiftToCreatineInputSpec(BaseInterfaceInputSpec):
+    in_file = File(
+        exists=True,
+        desc="NIFTI_MRS data.", 
+        mandatory=True
+        )
+    out_file = File(
+        desc="NIFTI_MRS data.",
+        mandatory=False
+        )
+
+    use_avg = traits.Bool(
+        False,
+        desc="If multiple spectra in higher dimensions, use the average of all the higher dimension spectra to calculate phase correction.",
+        usedefault=True,
+        mandatory=False
+        )
     
+    report = traits.Bool(
+        True,
+        desc="Generate report.",
+        usedefault=True,
+        mandatory=True
+        )
+    report_all = traits.Bool(
+        False,
+        desc="True to output all indicies.",
+        usedefault=True,
+        mandatory=False
+        )
+
+class ShiftToCreatineOutputSpec(TraitedSpec):
+    out_file = File(
+        exists=True,
+        desc="NIFTI_MRS data.",
+        mandatory=True
+        )
+    report = traits.File(
+        desc="Preprocessing report.",
+        mandatory=False
+    )
 
 class ShiftToCreatine(Base_fsl_mrs_Interface):
-    input_spec = Base_NIFTI_MRS_InputSpec
-    output_spec = Base_NIFTI_MRS_OutputSpec
+    input_spec = ShiftToCreatineInputSpec
+    output_spec = ShiftToCreatineOutputSpec
     
     INTERFACE_NAME='shift2Cr'
 
@@ -588,6 +864,12 @@ class ShiftToCreatine(Base_fsl_mrs_Interface):
         # output to tmp directory
         self.inputs.out_file = super()._generate_out_file_name(self.inputs.in_file, self.inputs.out_file, self.INTERFACE_NAME)
         self.inputs.out_file = os.path.abspath(self.inputs.out_file)
+
+        # report
+        if self.inputs.report:
+            self._mrsreport = os.path.abspath('.')
+        else:
+            self._mrsreport = None
 
         from fsl_mrs.utils.preproc import nifti_mrs_proc
 
@@ -599,19 +881,35 @@ class ShiftToCreatine(Base_fsl_mrs_Interface):
             ppm_ref=3.027,
             peak_search=(2.9, 3.1),
             # optional parameters
-            # TODO: Add optional parameters
+            use_avg=self.inputs.use_avg,
+            report=self._mrsreport,
+            report_all=self.inputs.report_all
             )
         
+        if self.inputs.report:
+            self._mrsreport = glob('report*.html', root_dir=self._mrsreport)[0]
+
         return runtime
 
     def _list_outputs(self):
         # get outputs
         outputs = self._outputs().get()
         outputs['out_file'] = self.inputs.out_file
+        outputs['report'] = self._mrsreport
         return outputs
 
 # ------------------ ShiftToReference ------------------
-class base_removepeak_InputSpec(BaseInterfaceInputSpec):
+
+class RemovePeakInputSpec(BaseInterfaceInputSpec):
+    in_file = File(
+        exists=True,
+        desc="NIFTI_MRS data.", 
+        mandatory=True
+        )
+    out_file = File(
+        desc="NIFTI_MRS data.",
+        mandatory=False
+        )
     limits = traits.Tuple(
         (traits.Float(), traits.Float()), 
          desc="ppm limits between which peaks will be removed." , 
@@ -622,32 +920,34 @@ class base_removepeak_InputSpec(BaseInterfaceInputSpec):
         desc='units of ppm_limits.', 
         mandatory=False
         )
-
-class base_removewater_InputSpec(BaseInterfaceInputSpec):
-    limits = traits.Tuple(
-        -.25, .25, 
-        desc="ppm limits between which peaks will be removed." , 
-        usedefault=True, 
-        mandatory=False
+    report = traits.Bool(
+        True,
+        desc="Generate report.",
+        usedefault=True,
+        mandatory=True
         )
-    limit_units = traits.Enum(
-        'ppm', 'ppm+shift', 'Hz', 
-        desc='units of ppm_limits.', 
-        default='ppm', 
-        usedefault=True, 
+    report_all = traits.Bool(
+        False,
+        desc="True to output all indicies.",
+        usedefault=True,
         mandatory=False
         )
 
-class RemovePeakInputSpec(Base_NIFTI_MRS_InputSpec, base_removepeak_InputSpec):
-    pass
-
-class RemoveWaterInputSpec(Base_NIFTI_MRS_InputSpec, base_removewater_InputSpec):
-    pass
+class RemovePeakOutputSpec(TraitedSpec):
+    out_file = File(
+        exists=True,
+        desc="NIFTI_MRS data.",
+        mandatory=True
+        )
+    report = traits.File(
+        desc="Preprocessing report.",
+        mandatory=False
+    )
 
 
 class RemovePeaks(Base_fsl_mrs_Interface):
     input_spec = RemovePeakInputSpec
-    output_spec = Base_NIFTI_MRS_OutputSpec
+    output_spec = RemovePeakOutputSpec
     
     INTERFACE_NAME='removepeaks'
 
@@ -656,6 +956,12 @@ class RemovePeaks(Base_fsl_mrs_Interface):
         # output to tmp directory
         self.inputs.out_file = super()._generate_out_file_name(self.inputs.in_file, self.inputs.out_file, self.INTERFACE_NAME)
         self.inputs.out_file = os.path.abspath(self.inputs.out_file)
+
+        # report
+        if self.inputs.report:
+            self._mrsreport = os.path.abspath('.')
+        else:
+            self._mrsreport = None
 
         from fsl_mrs.utils.preproc import nifti_mrs_proc
 
@@ -667,30 +973,70 @@ class RemovePeaks(Base_fsl_mrs_Interface):
             limits=self.inputs.limits,
             limit_units=self.inputs.limit_units,
             # optional parameters
-            # TODO: Add optional parameters
+            report=self._mrsreport,
+            report_all=self.inputs.report_all
             )
         
+        if self.inputs.report:
+            self._mrsreport = os.path.abspath('./'+glob('report*.html', root_dir=self._mrsreport)[0])
         return runtime
 
     def _list_outputs(self):
         # get outputs
         outputs = self._outputs().get()
         outputs['out_file'] = self.inputs.out_file
+        outputs['report'] = self._mrsreport
         return outputs
+
+
+class RemoveWaterInputSpec(BaseInterfaceInputSpec):
+    in_file = File(
+        exists=True,
+        desc="NIFTI_MRS data.", 
+        mandatory=True
+        )
+    out_file = File(
+        desc="NIFTI_MRS data.",
+        mandatory=False
+        )
+    report = traits.Bool(
+        True,
+        desc="Generate report.",
+        usedefault=True,
+        mandatory=True
+        )
+    report_all = traits.Bool(
+        False,
+        desc="True to output all indicies.",
+        usedefault=True,
+        mandatory=False
+        )
+
+class RemoveWaterOutputSpec(TraitedSpec):
+    out_file = File(
+        exists=True,
+        desc="NIFTI_MRS data.",
+        mandatory=True
+        )
+    report = traits.File(
+        desc="Preprocessing report.",
+        mandatory=False
+    )
+
 
 class RemoveWater(Base_fsl_mrs_Interface):
     input_spec = RemoveWaterInputSpec
-    output_spec = Base_NIFTI_MRS_OutputSpec
+    output_spec = RemoveWaterOutputSpec
     
     INTERFACE_NAME='removeH2O'
 
-    def __init__(self, **inputs):
-        super().__init__(**inputs)
-        os.environ["OMP_NUM_THREADS"] = "4" # export OMP_NUM_THREADS=4
-        os.environ["OPENBLAS_NUM_THREADS"] = "4" # export OPENBLAS_NUM_THREADS=4 
-        os.environ["MKL_NUM_THREADS"] = "6" # export MKL_NUM_THREADS=6
-        os.environ["VECLIB_MAXIMUM_THREADS"] = "4" # export VECLIB_MAXIMUM_THREADS=4
-        os.environ["NUMEXPR_NUM_THREADS"] = "6" # export NUMEXPR_NUM_THREADS=6
+    # def __init__(self, **inputs):
+        # super().__init__(**inputs)
+        # os.environ["OMP_NUM_THREADS"] = "4" # export OMP_NUM_THREADS=4
+        # os.environ["OPENBLAS_NUM_THREADS"] = "4" # export OPENBLAS_NUM_THREADS=4 
+        # os.environ["MKL_NUM_THREADS"] = "6" # export MKL_NUM_THREADS=6
+        # os.environ["VECLIB_MAXIMUM_THREADS"] = "4" # export VECLIB_MAXIMUM_THREADS=4
+        # os.environ["NUMEXPR_NUM_THREADS"] = "6" # export NUMEXPR_NUM_THREADS=6
 
     def _run_interface(self, runtime):
 
@@ -698,28 +1044,36 @@ class RemoveWater(Base_fsl_mrs_Interface):
         self.inputs.out_file = super()._generate_out_file_name(self.inputs.in_file, self.inputs.out_file, self.INTERFACE_NAME)
         self.inputs.out_file = os.path.abspath(self.inputs.out_file)
 
-        from fsl_mrs.utils.preproc import nifti_mrs_proc
+        # report
+        if self.inputs.report:
+            self._mrsreport = os.path.abspath('.')
+        else:
+            self._mrsreport = None
 
+        from fsl_mrs.utils.preproc import nifti_mrs_proc
 
         # run function
         self.inputs.out_file = mrs_io_decorator(self.inputs.out_file)(nifti_mrs_proc.remove_peaks)(
             # mandatory file_names
             self.inputs.in_file, 
-            # fixed parameters
-            limits=self.inputs.limits,
-            limit_units=self.inputs.limit_units,
+            # mandatory parameters
+            limits=( -.25, .25),
+            limit_units='ppm',
             # optional parameters
-            # TODO: Add optional parameters
+            report=self._mrsreport,
+            report_all=self.inputs.report_all
             )
         
+        if self.inputs.report:
+            self._mrsreport = os.path.abspath('./'+glob('report*.html', root_dir=self._mrsreport)[0])
         return runtime
 
     def _list_outputs(self):
         # get outputs
         outputs = self._outputs().get()
         outputs['out_file'] = self.inputs.out_file
+        outputs['report'] = self._mrsreport
         return outputs
-
 # ------------------ DynamicAlign ------------------
 
 class AlignByDynamicFit_InputSpec(Base_NIFTI_MRS_InputSpec, Base_Basis_MRS_InputSpec, Model_NIFTI_MRS_InputSpec, ppm_NIFTI_MRS_InputSpec):
@@ -893,83 +1247,6 @@ def split_edit_subspectra(svs):
     edit_list.append(svs)
 
     return tuple(edit_list)
-
-def _split_edit_subspectra(in_file, out_dir):
-    """
-    Split an SVS along the EDIT dimension. 
-    """
-    from fsl_mrs.utils import mrs_io
-
-    extension = 'nii.gz'
-    nifti_mrs = mrs_io.read_FID(in_file)
-
-    subspectra = split_edit_subspectra(nifti_mrs)
-
-    subspectra_filenames = []
-    for subspectra_index in range(subspectra):
-        subspectra_filenames.append(os.path.join(out_dir, subspectra_index + extension))
-    
-    for subspectrum, filename in zip(subspectra, subspectra_filenames):
-        subspectrum.save(filename)
-
-    return subspectra_filenames
-
-class split_edit_subspectra_InputSpec(BaseInterfaceInputSpec):
-    in_file = File(exists=True, desc="NIFTI_MRS data.", mandatory=True)
-    out_dir = traits.Directory(exists=True, desc="Output directory.", mandatory=False)
-
-class split_edit_subspectra_OutputSpec(TraitedSpec):
-    a = File(exists=True, desc="NIFTI_MRS data.", mandatory=True)
-    b = File(exists=True, desc="NIFTI_MRS data.", mandatory=True)
-    c = File(exists=False, desc="NIFTI_MRS data.", mandatory=False)
-    d = File(exists=False, desc="NIFTI_MRS data.", mandatory=False)
-
-class SplitEditSubspectra(Base_fsl_mrs_Interface):
-    """
-    Split DIM_EDIT.
-    """
-    input_spec = split_edit_subspectra_InputSpec
-    output_spec = split_edit_subspectra_OutputSpec
-    
-    def _run_interface(self, runtime):
-
-        # output to tmp directory
-        if self.inputs.out_dir:
-            self.inputs.out_dir = os.path.abspath(self.inputs.out_dir)
-        else:
-            self.inputs.out_dir = os.path.abspath(os.path.getcwd())
-
-
-        # run function
-        out_files = _split_edit_subspectra(
-            # mandatory file_names
-            self.inputs.in_file, 
-            self.inputs.out_dir,
-            )
-        
-        if len(out_files) >= 2:
-            self._outputs.a = out_files[0]
-            self._outputs.b = out_files[1]
-        else:
-            self._outputs.a = None
-            self._outputs.b = None
-        if len(out_files) == 4:
-            self._outputs.c = out_files[2]
-            self._outputs.d = out_files[3]
-        else:
-            self._outputs.c = None
-            self._outputs.d = None
-        
-        return runtime
-
-    def _list_outputs(self):
-        # get outputs
-        outputs = self._outputs().get()
-        outputs['a'] = self.inputs.a
-        outputs['b'] = self.inputs.b
-        outputs['c'] = self.inputs.c
-        outputs['d'] = self.inputs.d
-        return outputs
 
 
 def hermes_align_y_edit(svs):
