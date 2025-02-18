@@ -1,7 +1,7 @@
 import os
 import re
 from glob import glob
-from nipype.interfaces.base import BaseInterface, BaseInterfaceInputSpec, TraitedSpec, traits, File
+from nipype.interfaces.base import CommandLine, CommandLineInputSpec, BaseInterface, BaseInterfaceInputSpec, TraitedSpec, traits, File
 from fsl_mrs.core.nifti_mrs import NIFTI_MRS
 from fsl_mrs.core.basis import Basis
 
@@ -87,7 +87,58 @@ def edit_report_h2(report, h2):
         html_file.write(str(soup.prettify()))
 
     return None
-        
+
+class merge_mrs_reports_InputSpec(CommandLineInputSpec):
+    in_files = traits.List(
+        traits.File(exists=True),
+        argstr='%s',
+        position=-1,
+        mandatory=True,
+        desc="List of html reports to merge.",
+        sep=" ",
+        )
+    description = traits.Str(
+        argstr='-d %s',
+        mandatory=True,
+        description='Dataset description.'
+    )
+    out_file = traits.Str(
+        argstr='-f %s',
+        descripton="Output filename.",
+        mandatory=False,
+        default_value='mergedReports.html',
+        usedefault=True
+    )
+
+class merge_mrs_reports_OutputSpec(TraitedSpec):
+    out_file = traits.File(
+        exists=True,
+        mandatory=True
+        )
+
+class merge_mrs_reports_Interface(CommandLine):
+    _cmd = "merge_mrs_reports"
+    input_spec = merge_mrs_reports_InputSpec
+    output_spec = merge_mrs_reports_OutputSpec
+
+    def _run_interface(self, runtime):
+        # The returncode is meaningless in BET.  So check the output
+        # in stderr and if it's set, then update the returncode
+        # accordingly.
+        runtime = super()._run_interface(runtime)
+        if runtime.stderr:
+            self.raise_exception(runtime)
+        return runtime
+
+    def _format_arg(self, name, spec, value):
+        formatted = super()._format_arg(name, spec, value)
+        return formatted
+
+    def _list_outputs(self):
+        outputs = self.output_spec().get()
+        outputs["out_file"] = os.path.abspath(self.inputs.out_file)
+        return outputs
+
 
 # General Input and Output Specs
 
