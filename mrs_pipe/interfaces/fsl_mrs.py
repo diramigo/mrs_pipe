@@ -73,6 +73,20 @@ def mrs_io_decorator(out_file):
     
     return decorator
 
+
+def edit_report_h2(report, h2):
+    """Edit the header of a report."""
+    from bs4 import BeautifulSoup
+
+    with open(report, 'r') as html_file:
+        soup = BeautifulSoup(html_file)
+        h2_tag = soup.find('h2')
+        h2_tag.string = "combinación"
+
+    with open(report, 'w') as html_file:
+        html_file.write(str(soup.prettify()))
+
+    return None
         
 
 # General Input and Output Specs
