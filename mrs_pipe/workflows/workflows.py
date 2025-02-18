@@ -2,7 +2,47 @@ from nipype.pipeline.engine import Node, Workflow
 from nipype.interfaces.base import BaseInterface, BaseInterfaceInputSpec, TraitedSpec, traits, File
 from nipype.interfaces.utility import IdentityInterface
 from nipype.interfaces.io import DataSink, SelectFiles
-from mrs_pipe.interfaces import fsl_mrs 
+from nipype.interfaces import Function
+from mrs_pipe.interfaces.fsl_mrs import *
+
+def get_press_proc_wf():
+    
+    # svs
+    phase_correct_svs = Node(
+        PhaseCorrect_Creatine_ppmlim(), 
+        name='phase_correct_svs'
+        )
+    
+    align_dyn = Node(Align(), name='align_dyn')
+    align_dyn.inputs.dim = 'DIM_DYN'
+    
+    remove_water = Node(RemoveWater(), name='remove_water')
+    
+    shift2creatine = Node(ShiftToCreatine(), name='shift2creatine')
+
+    average_svs = Node(Average(), name='avg_dyn')
+    average_svs.inputs.dim = 'DIM_DYN'
+    
+    ec_correct_svs = Node(EddyCurrentCorrection(), name='ec_correct_svs')
+
+    # ref
+    align_ref = Node(Align(), name='align_ref')
+    align_ref.inputs.dim = 'DIM_DYN'
+    align_ref.inputs.ppmlim = (0,8)
+    
+    get_ecc_ref = Node(Average(), name='get_ecc_ref')
+    get_ecc_ref.inputs.dim = 'DIM_DYN'
+    
+    ec_correct_ref = Node(EddyCurrentCorrection(), name='ec_correct_ref')
+    
+    phase_correct_ref = Node(PhaseCorrect(), name='phase_correct_ref')
+    phase_correct_ref.inputs.ppmlim = (4.55, 4.7)
+    phase_correct_ref.inputs.out_file = 'preproc'
+    
+    average_ref = Node(Average(), name='avg_dyn_ref')
+    average_ref.inputs.dim = 'DIM_DYN'
+    
+    return None
 
 
 def get_hermes_proc_wf(subject, bids_root):
@@ -24,32 +64,39 @@ def get_hermes_proc_wf(subject, bids_root):
 
     # svs
     hermes_sort_subspectra = Node(HERMESSortSubspectra(), name='hermes_sort_subspectra')
-    align_dyn = Node(Align(), name='align_dyn')
-    align_dyn.inputs.dim = 'DIM_DYN'
+    
     align_edit = Node(Align(), name='align_edit')
     align_edit.inputs.dim = 'DIM_EDIT'
     align_edit.inputs.out_file = 'preproc'
+
     average_svs = Node(Average(), name='avg_dyn')
     average_svs.inputs.dim = 'DIM_DYN'
+    align_dyn = Node(Align(), name='align_dyn')
+    align_dyn.inputs.dim = 'DIM_DYN'
     ec_correct_svs = Node(EddyCurrentCorrection(), name='ec_correct_svs')
     remove_water = Node(RemoveWater(), name='remove_water')
-    # remove_water.interface.num_threads = 16
     shift2creatine = Node(ShiftToCreatine(), name='shift2creatine')
     phase_correct_svs = Node(PhaseCorrect_Creatine_ppmlim(), name='phase_correct_svs')
+    
     hermes_yalign = Node(HERMESAlignYEdit(), name='hermes_yalign')
     edit_sum = Node(HERMES_Edit_Sum(), name='edit_sum')
 
     # ref
-    remove_zero_mean_ref = Node(_HERMESRefRemoveZeroMeanTransients(), name='remove_zero_mean_ref')
+    remove_zero_mean_ref = Node(HERMESRefRemoveZeroMeanTransients(), name='remove_zero_mean_ref')
+    
     align_ref = Node(Align(), name='align_ref')
     align_ref.inputs.dim = 'DIM_DYN'
     align_ref.inputs.ppmlim = (0,8)
+    
     get_ecc_ref = Node(Average(), name='get_ecc_ref')
     get_ecc_ref.inputs.dim = 'DIM_DYN'
+    
     ec_correct_ref = Node(EddyCurrentCorrection(), name='ec_correct_ref')
+    
     phase_correct_ref = Node(PhaseCorrect(), name='phase_correct_ref')
     phase_correct_ref.inputs.ppmlim = (4.55, 4.7)
     phase_correct_ref.inputs.out_file = 'preproc'
+    
     average_ref = Node(Average(), name='avg_dyn_ref')
     average_ref.inputs.dim = 'DIM_DYN'
 
@@ -106,5 +153,3 @@ def get_hermes_proc_wf(subject, bids_root):
     return hermes_proc
 
 
-basic_proc = get_basic_proc_wf(["sub-001B", "sub-002B", "sub-002A"], "/home/diego/Documents/projects/mrs_gaba/inputs/mri-raw/", nprocs=16)
-basic_proc.run()
