@@ -1248,6 +1248,82 @@ def split_edit_subspectra(svs):
 
     return tuple(edit_list)
 
+class SplitHermesInputSpec(BaseInterfaceInputSpec):
+    in_file = File(
+        exists=True,
+        desc="NIFTI_MRS data.", 
+        mandatory=True
+        )
+    out_dir = traits.Directory(
+        exists=True, 
+        desc="Output directory.",
+        default = None
+        )
+    
+class SplitHermesOutputSpec(TraitedSpec):
+    both_off = File(
+        exists=True,
+        desc="NIFTI_MRS data. BOTH OFF."
+    )
+    gaba_on = File(
+        exists=True,
+        desc="NIFTI_MRS data. GABA ON."
+    )
+    gsh_on = File(
+        exists=True,
+        desc="NIFTI_MRS data. GSH OFF."
+    )
+    both_on = File(
+        exists=True,
+        desc="NIFTI_MRS data. BOTH ON."
+    )
+
+
+class SplitHermes(Base_fsl_mrs_Interface):
+    # Input and output specs
+    input_spec = SplitHermesInputSpec
+    output_spec = SplitHermesOutputSpec
+    
+    INTERFACE_NAME='splitHermes'
+
+    def _run_interface(self, runtime):
+
+        if not isinstance(self.inputs.out_dir, str):
+            self.inputs.out_dir = os.getcwd()
+
+        # output to tmp directory
+        self._gaba_on = super()._generate_out_file_name(self.inputs.in_file, None, "gabaON")
+        self._gaba_on  = os.path.abspath(os.path.join(self.inputs.out_dir, self._gaba_on))
+
+        self._gsh_on = super()._generate_out_file_name(self.inputs.in_file, None, "gshON")
+        self._gsh_on  = os.path.abspath(os.path.join(self.inputs.out_dir, self._gsh_on))
+
+        self._both_off = super()._generate_out_file_name(self.inputs.in_file, None, "bothOFF")
+        self._both_off  = os.path.abspath(os.path.join(self.inputs.out_dir, self._both_off))
+    
+        self._both_on = super()._generate_out_file_name(self.inputs.in_file, None, "bothON")
+        self._both_on  = os.path.abspath(os.path.join(self.inputs.out_dir, self._both_on))
+
+        output_list = [self._both_off, self._gaba_on, self._gsh_on, self._both_on]
+
+        # run function
+        self._both_off, self._gaba_on, self._gsh_on, self._both_on = mrs_io_decorator(output_list)(split_edit_subspectra)(
+            # mandatory file_names
+            self.inputs.in_file, 
+            )
+        
+        return runtime
+
+    def _list_outputs(self):
+        # get outputs
+        outputs = self._outputs().get()
+        outputs['both_off'] = self._both_off
+        outputs['gaba_on'] = self._gaba_on
+        outputs['gsh_on'] = self._gsh_on
+        outputs['both_on'] = self._both_on
+        return outputs
+
+
 
 def hermes_align_y_edit(svs):
     """
