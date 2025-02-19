@@ -1,5 +1,5 @@
-if __name__ == '__main__':
-
+def main(args):
+    
     import os
     from argparse import ArgumentParser
     parser = ArgumentParser()
@@ -9,7 +9,7 @@ if __name__ == '__main__':
     parser.add_argument('--omp_nthreads', type=int, default=1)
     parser.add_argument('bids_dir', type=str)
     parser.add_argument('output_dir', type=str)
-    args = parser.parse_args()
+    args = parser.parse_args(args)
 
     # set omp_nthreads before importing packages with numpy dependencies
     if args.omp_nthreads:
@@ -19,3 +19,7 @@ if __name__ == '__main__':
 
     basic_proc = get_hermes_proc_wf(args.subject_label, args.volume, args.bids_dir, args.output_dir)
     basic_proc.run(plugin='MultiProc',  plugin_args={'n_procs' : args.n_procs})
+
+if __name__ == '__main__':
+        
+    main()

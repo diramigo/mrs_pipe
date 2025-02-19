@@ -12,5 +12,10 @@ setup(
         "fsl_mrs>=2.1.13",  
         "nipype>=1.8.0",
     ],
-    python_requires=">=3.11"
+    python_requires=">=3.11",
+    entry_points={
+        "console_scripts": [
+            "mrs_pipe=mrs_pipe.__main__:main",
+        ],
+    },
 )
