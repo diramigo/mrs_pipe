@@ -72,9 +72,12 @@ def get_hermes_subspectra_proc_wf(name):
 
     return hermes_subspectra_proc_wf
 
-def get_hermes_proc_wf(subject, voi, bids_root):
+def get_hermes_proc_wf(subject, voi, bids_root, output_dir):
 
-    infosource = Node(IdentityInterface(fields=["subject"]),
+    bids_root = os.path.abspath(bids_root)
+    output_dir = os.path.abspath(output_dir)
+
+    infosource = Node(IdentityInterface(fields=["subject", "voi"]),
                     name="infosource")
     infosource.iterables = [("subject", subject), ("voi", voi)]
 
@@ -135,12 +138,12 @@ def get_hermes_proc_wf(subject, voi, bids_root):
 
     # sink
     preproc_sinker = Node(DataSink(), name='preproc_derivatives')
-    preproc_sinker.inputs.base_directory = os.path.abspath('./outputs')
+    preproc_sinker.inputs.base_directory = output_dir
     preproc_sinker.inputs.parameterization = False
 
     report_sinker = Node(
         DataSink(
-            base_directory=os.path.abspath('./outputs'), 
+            base_directory=output_dir, 
             container='', 
             parameterization=False), 
         name='report_derivatives'
@@ -152,6 +155,7 @@ def get_hermes_proc_wf(subject, voi, bids_root):
     hermes_proc.connect(
         [
         (infosource, select_files,  [('subject', 'subject')]),
+        (infosource, select_files,  [('voi', 'voi')]),
         # ref
         (select_files, get_ref_stem,  [('ref', 'file')]),
         (select_files, remove_zero_mean_ref,  [('ref', 'in_file')]),
