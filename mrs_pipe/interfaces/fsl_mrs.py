@@ -2,6 +2,7 @@ import os
 import re
 from glob import glob
 from nipype.interfaces.base import CommandLine, CommandLineInputSpec, BaseInterface, BaseInterfaceInputSpec, TraitedSpec, traits, File
+from nipype.interfaces import Function
 from fsl_mrs.core.nifti_mrs import NIFTI_MRS
 from fsl_mrs.core.basis import Basis
 
@@ -88,6 +89,17 @@ def edit_report_h2(report, h2):
 
     return None
 
+def get_file_stem(file):
+    from pathlib import Path
+    return Path(Path(file).stem).stem
+
+get_file_stem_Interface = Function(
+    input_names='file', 
+    output_names='out', 
+    function=get_file_stem
+    )
+
+
 class merge_mrs_reports_InputSpec(CommandLineInputSpec):
     in_files = traits.List(
         traits.File(exists=True),
@@ -122,9 +134,10 @@ class merge_mrs_reports_Interface(CommandLine):
     output_spec = merge_mrs_reports_OutputSpec
 
     def _run_interface(self, runtime):
-        # The returncode is meaningless in BET.  So check the output
-        # in stderr and if it's set, then update the returncode
-        # accordingly.
+        from pathlib import Path
+        if Path(self.inputs.out_file).suffix != '.html':
+            self.inputs.out_file += '.html'
+
         runtime = super()._run_interface(runtime)
         if runtime.stderr:
             self.raise_exception(runtime)
@@ -952,7 +965,7 @@ class ShiftToCreatine(Base_fsl_mrs_Interface):
             )
         
         if self.inputs.report:
-            self._mrsreport = glob('report*.html', root_dir=self._mrsreport)[0]
+            self._mrsreport = os.path.abspath(glob('report*.html', root_dir=self._mrsreport)[0])
 
         return runtime
 
