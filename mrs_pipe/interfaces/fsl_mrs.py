@@ -75,14 +75,14 @@ def mrs_io_decorator(out_file):
     return decorator
 
 
-def edit_report_h2(report, h2):
-    """Edit the header of a report."""
+def append_text_to_report_h2(report, text):
+    """Append text to the header of a report."""
     from bs4 import BeautifulSoup
 
     with open(report, 'r') as html_file:
         soup = BeautifulSoup(html_file)
         h2_tag = soup.find('h2')
-        h2_tag.string = "combinación"
+        h2_tag.string = f'{h2_tag.string} ({text})'
 
     with open(report, 'w') as html_file:
         html_file.write(str(soup.prettify()))
@@ -151,6 +151,77 @@ class merge_mrs_reports_Interface(CommandLine):
         outputs = self.output_spec().get()
         outputs["out_file"] = os.path.abspath(self.inputs.out_file)
         return outputs
+
+
+class MergeHermesInputSpec(BaseInterfaceInputSpec):
+    both_off = File(
+        exists=True,
+        desc="NIFTI_MRS data. BOTH OFF.",
+        mandatory=True
+    )
+    gaba_on = File(
+        exists=True,
+        desc="NIFTI_MRS data. GABA ON.",
+        mandatory=True
+    )
+    gsh_on = File(
+        exists=True,
+        desc="NIFTI_MRS data. GSH OFF.",
+        mandatory=True
+    )
+    both_on = File(
+        exists=True,
+        desc="NIFTI_MRS data. BOTH ON.",
+        mandatory=True
+    )
+    out_file = File(
+        desc="NIFTI_MRS data.",
+        mandatory=False
+        )
+class MergeHermesOutputSpec(TraitedSpec):
+    out_file = File(
+        exists=True,
+        desc="NIFTI_MRS data.",
+        mandatory=True
+        )
+class MergeHermes(Base_fsl_mrs_Interface):
+    # Input and output specs
+    input_spec = MergeHermesInputSpec
+    output_spec = MergeHermesOutputSpec
+    
+    INTERFACE_NAME='mergeHermes'
+
+    def _run_interface(self, runtime):
+
+        # output to tmp directory
+        self.inputs.out_file = super()._generate_out_file_name(self.inputs.both_off, self.inputs.out_file, self.INTERFACE_NAME)
+        self.inputs.out_file = os.path.abspath(self.inputs.out_file)
+
+        from fsl_mrs.core import nifti_mrs as nifti_mrs_tools
+        from fsl_mrs.utils import mrs_io
+
+        both_off = mrs_io.read_FID(self.inputs.both_off)
+        both_on = mrs_io.read_FID(self.inputs.both_on)
+        gaba_on = mrs_io.read_FID(self.inputs.gaba_on)
+        gsh_on = mrs_io.read_FID(self.inputs.gsh_on)
+
+        # run function
+        out_file = nifti_mrs_tools.merge(
+            # mandatory file_names
+            (both_off, gaba_on, gsh_on, both_on),
+            dimension='DIM_EDIT'
+            )
+        
+        out_file.save(self.inputs.out_file)
+        
+        return runtime
+
+    def _list_outputs(self):
+        # get outputs
+        outputs = self._outputs().get()
+        outputs['out_file'] = self.inputs.out_file
+        return outputs
+
 
 
 # General Input and Output Specs
