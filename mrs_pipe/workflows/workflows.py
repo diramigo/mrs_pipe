@@ -44,7 +44,7 @@ def get_press_proc_wf():
     
     return None
 
-def get_hermes_subspectra_proc_wf(name):
+def get_hermes_subspectra_proc_wf(name, report_append=None):
 
     align_dyn = Node(Align(), name='align_dyn')
     align_dyn.inputs.dim = 'DIM_DYN'
@@ -52,9 +52,15 @@ def get_hermes_subspectra_proc_wf(name):
     remove_water = Node(RemoveWater(), name='remove_water')
     shift2creatine = Node(ShiftToCreatine(), name='shift2creatine')
     phase_correct_svs = Node(PhaseCorrect_Creatine_ppmlim(), name='phase_correct_svs')
+    
+    if report_append:
+        align_dyn.inputs.report_append = report_append
+        ec_correct_svs.inputs.report_append = report_append
+        remove_water.inputs.report_append = report_append
+        shift2creatine.inputs.report_append = report_append
+        phase_correct_svs.inputs.report_append = report_append
 
     svs_reports2list = Node(Merge(numinputs=5), name='svs_reports2list')
-    
     hermes_subspectra_proc_wf = Workflow(name=name, base_dir='work')
 
     hermes_subspectra_proc_wf.connect([
@@ -95,10 +101,10 @@ def get_hermes_proc_wf(subject, voi, bids_root, output_dir):
     hermes_sort_subspectra = Node(HERMESSortSubspectra(), name='hermes_sort_subspectra')
 
     split_hermes = Node(SplitHermes(), name='split_hermes')
-    proc_gaba_on = get_hermes_subspectra_proc_wf('proc_gaba_on')
-    proc_gsh_on = get_hermes_subspectra_proc_wf('proc_gsh_on')
-    proc_both_off = get_hermes_subspectra_proc_wf('proc_both_off')
-    proc_both_on = get_hermes_subspectra_proc_wf('proc_both_on')
+    proc_gaba_on = get_hermes_subspectra_proc_wf('proc_gaba_on', 'GABA_ON')
+    proc_gsh_on = get_hermes_subspectra_proc_wf('proc_gsh_on', 'GSH_ON')
+    proc_both_off = get_hermes_subspectra_proc_wf('proc_both_off', 'BOTH_OFF')
+    proc_both_on = get_hermes_subspectra_proc_wf('proc_both_on', 'BOTH_ON')
 
     merge_hermes = Node(MergeHermes(), name='merge_hermes')
     average_svs = Node(Average(), name='avg_dyn')
@@ -106,6 +112,7 @@ def get_hermes_proc_wf(subject, voi, bids_root, output_dir):
     align_edit = Node(Align(), name='align_edit')
     align_edit.inputs.dim = 'DIM_EDIT'
     align_edit.inputs.out_file = 'preproc'
+    align_edit.inputs.report_append = 'DIM_EDIT'
     hermes_yalign = Node(HERMESAlignYEdit(), name='hermes_yalign')
     edit_sum = Node(HERMES_Edit_Sum(), name='edit_sum')
 

@@ -333,6 +333,10 @@ class CoilCombineInputSpec(BaseInterfaceInputSpec):
         defualt=False,
         mandatory=False
         )
+    report_append = traits.Str(
+        desc="Append text to report header.",
+        mandatory=False
+    )
 
 class CoilCombineOutputSpec(TraitedSpec):
     out_file = File(
@@ -382,6 +386,10 @@ class CoilCombine(Base_fsl_mrs_Interface):
         
         if self.inputs.report:
             self._mrsreport = os.path.abspath('./'+glob('report*.html', root_dir=self._mrsreport)[0])
+            
+            if self.inputs.report_append:
+                append_text_to_report_h2(self._mrsreport, self.inputs.report_append)
+                
         return runtime
 
     def _list_outputs(self):
@@ -418,6 +426,10 @@ class AverageInputSpec(BaseInterfaceInputSpec):
         defualt=False,
         mandatory=False
         )
+    report_append = traits.Str(
+        desc="Append text to report header.",
+        mandatory=False
+    )
 
 class AverageOutputSpec(TraitedSpec):
     out_file = File(
@@ -464,6 +476,9 @@ class Average(Base_fsl_mrs_Interface):
         
         if self.inputs.report:
             self._mrsreport = os.path.abspath('./'+glob('report*.html', root_dir=self._mrsreport)[0])
+
+            if self.inputs.report_append:
+                append_text_to_report_h2(self._mrsreport, self.inputs.report_append)
 
         return runtime
 
@@ -521,6 +536,10 @@ class AlignInputSpec(BaseInterfaceInputSpec):
         usedefault=True,
         mandatory=False
         )
+    report_append = traits.Str(
+        desc="Append text to report header.",
+        mandatory=False
+    )
 
 class AlignOutputSpec(TraitedSpec):
     out_file = File(
@@ -571,6 +590,9 @@ class Align(Base_fsl_mrs_Interface):
 
         if self.inputs.report:
             self._mrsreport = os.path.abspath('./'+glob('report*.html', root_dir=self._mrsreport)[0])
+            
+            if self.inputs.report_append:
+                append_text_to_report_h2(self._mrsreport, self.inputs.report_append)
         
         return runtime
 
@@ -609,6 +631,10 @@ class EddyCurrentCorrectionInputSpec(BaseInterfaceInputSpec):
         usedefault=True,
         mandatory=False
         )
+    report_append = traits.Str(
+        desc="Append text to report header.",
+        mandatory=False
+    )
 
 class EddyCurrentCorrectionOutputSpec(TraitedSpec):
     out_file = File(
@@ -653,6 +679,10 @@ class EddyCurrentCorrection(Base_fsl_mrs_Interface):
         
         if self.inputs.report:
             self._mrsreport = os.path.abspath('./'+glob('report*.html', root_dir=self._mrsreport)[0])
+            
+            if self.inputs.report_append:
+                append_text_to_report_h2(self._mrsreport, self.inputs.report_append)
+
         return runtime
 
     def _list_outputs(self):
@@ -707,6 +737,10 @@ class PhaseCorrectInputSpec(BaseInterfaceInputSpec):
         usedefault=True,
         mandatory=False
         )
+    report_append = traits.Str(
+        desc="Append text to report header.",
+        mandatory=False
+    )
     
 
 class PhaseCorrectOutputSpec(TraitedSpec):
@@ -755,6 +789,10 @@ class PhaseCorrect(Base_fsl_mrs_Interface):
 
         if self.inputs.report:
             self._mrsreport = os.path.abspath('./'+glob('report*.html', root_dir=self._mrsreport)[0])
+
+            if self.inputs.report_append:
+                append_text_to_report_h2(self._mrsreport, self.inputs.report_append)
+            
         return runtime
 
     def _list_outputs(self):
@@ -799,6 +837,10 @@ class PhaseCorrectCreatineInputSpec(BaseInterfaceInputSpec):
         usedefault=True,
         mandatory=False
         )
+    report_append = traits.Str(
+        desc="Append text to report header.",
+        mandatory=False
+    )
     
 
 class PhaseCorrectCreatineOutputSpec(TraitedSpec):
@@ -847,6 +889,10 @@ class PhaseCorrect_Creatine_ppmlim(Base_fsl_mrs_Interface):
         
         if self.inputs.report:
             self._mrsreport = os.path.abspath('./'+glob('report*.html', root_dir=self._mrsreport)[0])
+            
+            if self.inputs.report_append:
+                append_text_to_report_h2(self._mrsreport, self.inputs.report_append)
+            
         return runtime
 
     def _list_outputs(self):
@@ -877,8 +923,6 @@ class ShiftToReferenceInputSpec(BaseInterfaceInputSpec):
         desc="Search for peak between these ppm limits e.g. (2.8, 3.2) for tCr.", 
         mandatory=True,
         )
-    
-
     use_avg = traits.Bool(
         False,
         desc="If multiple spectra in higher dimensions, use the average of all the higher dimension spectra to calculate phase correction.",
@@ -898,6 +942,10 @@ class ShiftToReferenceInputSpec(BaseInterfaceInputSpec):
         usedefault=True,
         mandatory=False
         )
+    report_append = traits.Str(
+        desc="Append text to report header.",
+        mandatory=False
+    )
 
 
 
@@ -949,6 +997,9 @@ class ShiftToReference(Base_fsl_mrs_Interface):
         
         if self.inputs.report:
             self._mrsreport = glob('report*.html', root_dir=self._mrsreport)[0]
+            
+            if self.inputs.report_append:
+                append_text_to_report_h2(self._mrsreport, self.inputs.report_append)
 
         return runtime
 
@@ -970,14 +1021,12 @@ class ShiftToCreatineInputSpec(BaseInterfaceInputSpec):
         desc="NIFTI_MRS data.",
         mandatory=False
         )
-
     use_avg = traits.Bool(
         False,
         desc="If multiple spectra in higher dimensions, use the average of all the higher dimension spectra to calculate phase correction.",
         usedefault=True,
         mandatory=False
         )
-    
     report = traits.Bool(
         True,
         desc="Generate report.",
@@ -990,6 +1039,10 @@ class ShiftToCreatineInputSpec(BaseInterfaceInputSpec):
         usedefault=True,
         mandatory=False
         )
+    report_append = traits.Str(
+        desc="Append text to report header.",
+        mandatory=False
+    )
 
 class ShiftToCreatineOutputSpec(TraitedSpec):
     out_file = File(
@@ -1037,6 +1090,9 @@ class ShiftToCreatine(Base_fsl_mrs_Interface):
         
         if self.inputs.report:
             self._mrsreport = os.path.abspath(glob('report*.html', root_dir=self._mrsreport)[0])
+            
+            if self.inputs.report_append:
+                append_text_to_report_h2(self._mrsreport, self.inputs.report_append)
 
         return runtime
 
@@ -1081,6 +1137,10 @@ class RemovePeakInputSpec(BaseInterfaceInputSpec):
         usedefault=True,
         mandatory=False
         )
+    report_append = traits.Str(
+        desc="Append text to report header.",
+        mandatory=False
+    )
 
 class RemovePeakOutputSpec(TraitedSpec):
     out_file = File(
@@ -1128,6 +1188,10 @@ class RemovePeaks(Base_fsl_mrs_Interface):
         
         if self.inputs.report:
             self._mrsreport = os.path.abspath('./'+glob('report*.html', root_dir=self._mrsreport)[0])
+            
+            if self.inputs.report_append:
+                append_text_to_report_h2(self._mrsreport, self.inputs.report_append)
+            
         return runtime
 
     def _list_outputs(self):
@@ -1160,6 +1224,10 @@ class RemoveWaterInputSpec(BaseInterfaceInputSpec):
         usedefault=True,
         mandatory=False
         )
+    report_append = traits.Str(
+        desc="Append text to report header.",
+        mandatory=False
+    )
 
 class RemoveWaterOutputSpec(TraitedSpec):
     out_file = File(
@@ -1178,14 +1246,6 @@ class RemoveWater(Base_fsl_mrs_Interface):
     output_spec = RemoveWaterOutputSpec
     
     INTERFACE_NAME='removeH2O'
-
-    # def __init__(self, **inputs):
-        # super().__init__(**inputs)
-        # os.environ["OMP_NUM_THREADS"] = "4" # export OMP_NUM_THREADS=4
-        # os.environ["OPENBLAS_NUM_THREADS"] = "4" # export OPENBLAS_NUM_THREADS=4 
-        # os.environ["MKL_NUM_THREADS"] = "6" # export MKL_NUM_THREADS=6
-        # os.environ["VECLIB_MAXIMUM_THREADS"] = "4" # export VECLIB_MAXIMUM_THREADS=4
-        # os.environ["NUMEXPR_NUM_THREADS"] = "6" # export NUMEXPR_NUM_THREADS=6
 
     def _run_interface(self, runtime):
 
@@ -1215,6 +1275,10 @@ class RemoveWater(Base_fsl_mrs_Interface):
         
         if self.inputs.report:
             self._mrsreport = os.path.abspath('./'+glob('report*.html', root_dir=self._mrsreport)[0])
+
+            if self.inputs.report_append:
+                append_text_to_report_h2(self._mrsreport, self.inputs.report_append)
+            
         return runtime
 
     def _list_outputs(self):
