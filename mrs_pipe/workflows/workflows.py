@@ -90,7 +90,7 @@ def get_hermes_proc_wf(subject, voi, bids_root, output_dir):
     # select infiles
     templates = {
         "svs": "{subject}/mrs/{subject}_acq-hermes_voi-{voi}_svs.nii.gz",
-        "ref": "{subject}/mrs/{subject}_acq-hermes_voi-{voi}_ref.nii.gz"
+        "ref": "{subject}/mrs/{subject}_acq-hermes_voi-{voi}_mrsref.nii.gz"
     }
     select_files = Node(SelectFiles(templates), 'select_files')
     select_files.inputs.base_directory = bids_root
