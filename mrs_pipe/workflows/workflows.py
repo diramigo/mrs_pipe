@@ -3,6 +3,7 @@ from nipype.interfaces.base import BaseInterface, BaseInterfaceInputSpec, Traite
 from nipype.interfaces.utility import IdentityInterface, Merge
 from nipype.interfaces.io import DataSink, SelectFiles
 from mrs_pipe.interfaces.fsl_mrs import *
+from mrs_pipe.interfaces.osprey import SpectralRegistration
 
 
 def get_press_proc_wf():
@@ -107,13 +108,19 @@ def get_hermes_proc_wf(subject, voi, bids_root, output_dir):
     proc_both_on = get_hermes_subspectra_proc_wf('proc_both_on', 'BOTH_ON')
 
     merge_hermes = Node(MergeHermes(), name='merge_hermes')
-    average_svs = Node(Average(), name='avg_dyn')
-    average_svs.inputs.dim = 'DIM_DYN'
+    # average_svs = Node(Average(), name='avg_dyn')
+    # average_svs.inputs.dim = 'DIM_DYN'
     align_edit = Node(Align(), name='align_edit')
     align_edit.inputs.dim = 'DIM_EDIT'
     align_edit.inputs.out_file = 'preproc'
     align_edit.inputs.report_append = 'DIM_EDIT'
     hermes_yalign = Node(HERMESAlignYEdit(), name='hermes_yalign')
+    prob_specreg = Node(SpectralRegistration(), name='prob_specreg')
+    prob_specreg.inputs.osprey_path='/misc/geminis2/ramirezd/osprey/'
+    prob_specreg.inputs.method='Probabilistic'
+    prob_specreg.inputs.sequence='HERMES'
+    prob_specreg.inputs.spm_path='/misc/geminis2/spm12/'
+    prob_specreg.inputs.out_file='preproc'
     edit_sum = Node(HERMES_Edit_Sum(), name='edit_sum')
 
     ## merge svs reports 
@@ -193,8 +200,8 @@ def get_hermes_proc_wf(subject, voi, bids_root, output_dir):
 
         (merge_hermes, hermes_yalign, [('out_file', 'in_file')]),
         (hermes_yalign, align_edit, [('out_file', 'in_file')]),
-        (align_edit, average_svs, [('out_file', 'in_file')]),
-        (average_svs, edit_sum, [('out_file', 'in_file')]),
+        (align_edit, prob_specreg, [('out_file', 'in_file')]),
+        (prob_specreg, edit_sum, [('out_file', 'in_file')]),
 
         (infosource, preproc_sinker,  [('subject', 'container')]),
 
@@ -202,7 +209,7 @@ def get_hermes_proc_wf(subject, voi, bids_root, output_dir):
         (edit_sum, preproc_sinker, [('gaba', 'mrs.@gaba')]),
         (edit_sum, preproc_sinker, [('gsh', 'mrs.@gsh')]),
 
-        (average_svs, preproc_sinker, [('out_file', 'mrs.@average_svs')]),
+        (prob_specreg, preproc_sinker, [('out_file', 'mrs.@average_svs')]),
         (average_ref, preproc_sinker, [('out_file', 'mrs.@average_ref')]),
 
         (align_edit, preproc_sinker, [('out_file', 'mrs.@preproc_svs')]),
