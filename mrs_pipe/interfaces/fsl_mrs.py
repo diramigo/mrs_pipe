@@ -5,8 +5,9 @@ from nipype.interfaces.base import CommandLine, CommandLineInputSpec, BaseInterf
 from nipype.interfaces import Function
 from fsl_mrs.core.nifti_mrs import NIFTI_MRS
 from fsl_mrs.core.basis import Basis
+from mrs_pipe.interfaces.base import BaseMRSInterface
 
-class Base_fsl_mrs_Interface(BaseInterface):
+class BaseMRSInterface(BaseInterface):
     # BIDS pattern to name files
     BIDS_KEY_VALUES = r"(sub-[a-zA-Z0-9]+)(_ses-[a-zA-Z0-9]+)?(_task-[a-zA-Z0-9]+)?(_acq-[a-zA-Z0-9]+)?(_nuc-[a-zA-Z0-9]+)?(_voi-[a-zA-Z0-9]+)?(_rec-[a-zA-Z0-9]+)?(_run-[a-zA-Z0-9]+)?(_echo-[a-zA-Z0-9]+)?(_inv-[a-zA-Z0-9]+)?"
     BIDS_DERIVATIVE =  r"(_desc-[a-zA-Z0-9]+)?"
@@ -100,6 +101,8 @@ get_file_stem_Interface = Function(
     )
 
 
+# Interfaces
+
 class merge_mrs_reports_InputSpec(CommandLineInputSpec):
     in_files = traits.List(
         traits.File(exists=True),
@@ -184,7 +187,7 @@ class MergeHermesOutputSpec(TraitedSpec):
         desc="NIFTI_MRS data.",
         mandatory=True
         )
-class MergeHermes(Base_fsl_mrs_Interface):
+class MergeHermes(BaseMRSInterface):
     # Input and output specs
     input_spec = MergeHermesInputSpec
     output_spec = MergeHermesOutputSpec
@@ -224,72 +227,7 @@ class MergeHermes(Base_fsl_mrs_Interface):
 
 
 
-# General Input and Output Specs
 
-class Base_NIFTI_MRS_InputSpec(BaseInterfaceInputSpec):
-    in_file = File(
-        exists=True,
-        desc="NIFTI_MRS data.", 
-        mandatory=True
-        )
-    out_file = File(
-        desc="NIFTI_MRS data.",
-        mandatory=False
-        )
-    
-class Base_NIFTI_MRS_OutputSpec(TraitedSpec):
-    out_file = File(
-        exists=True,
-        desc="NIFTI_MRS data.",
-        mandatory=True
-        )
-    
-class Ref_NIFTI_MRS_InputSpec(BaseInterfaceInputSpec):
-    ref = File(
-        exists=True,
-        desc="NIFTI_MRS water reference data.", 
-        mandatory=True
-        )
-    
-class optional_ecc_NIFTI_MRS_InputSpec(BaseInterfaceInputSpec):
-    ecc_ref = File(
-        exists=True,
-        desc="NIFTI_MRS reference data for eddy current correction.", 
-        mandatory=False
-        )
-
-class Dim_NIFTI_MRS_InputSpec(BaseInterfaceInputSpec):
-    dim = traits.Enum(
-        "DIM_DYN", "DIM_EDIT", 'all',
-        desc="NIFTI-MRS dimension tag, or 'all'.",
-        mandatory=True
-    )
-    
-class ppm_NIFTI_MRS_InputSpec(BaseInterfaceInputSpec):
-    ppmlim = traits.Tuple((traits.Float, traits.Float), desc="ppm range.", mandatory=True)
-
-class optional_ppm_NIFTI_MRS_InputSpec(BaseInterfaceInputSpec):
-    ppmlim = traits.Either(None, traits.Tuple((traits.Float, traits.Float)), desc="ppm range.", usedefault=True, mandatory=False)
-
-class Base_Basis_MRS_InputSpec(BaseInterfaceInputSpec):
-    basis = traits.Either(
-        traits.Directory(exists=True), 
-        traits.List(traits.Directory(exists=True)), 
-        desc="Basis to fit, or list of basis matching the dimension to align.", 
-        mandatory=True
-        )
-    
-class Model_NIFTI_MRS_InputSpec(BaseInterfaceInputSpec):
-    baseline_order = traits.Int(desc="Baseline order for modelling.", mandatory=True)
-    model = traits.Enum(
-        "voigt", "lorentzian",
-        desc="Model type.",
-        mandatory=True
-    )
-
-
-
-# Interfaces
 
 # ------------------ CoilCombine ------------------
 class CoilCombineInputSpec(BaseInterfaceInputSpec):
@@ -349,7 +287,7 @@ class CoilCombineOutputSpec(TraitedSpec):
         mandatory=False
     )
     
-class CoilCombine(Base_fsl_mrs_Interface):
+class CoilCombine(BaseMRSInterface):
     # Input and output specs
     input_spec = CoilCombineInputSpec
     output_spec = CoilCombineOutputSpec
@@ -442,7 +380,7 @@ class AverageOutputSpec(TraitedSpec):
         mandatory=False
     )
 
-class Average(Base_fsl_mrs_Interface):
+class Average(BaseMRSInterface):
     # Input and output specs
     input_spec = AverageInputSpec
     output_spec = AverageOutputSpec
@@ -553,7 +491,7 @@ class AlignOutputSpec(TraitedSpec):
     )
 
 
-class Align(Base_fsl_mrs_Interface):
+class Align(BaseMRSInterface):
     # Input and output specs
     input_spec = AlignInputSpec
     output_spec = AlignOutputSpec
@@ -647,7 +585,7 @@ class EddyCurrentCorrectionOutputSpec(TraitedSpec):
         mandatory=False
     )
 
-class EddyCurrentCorrection(Base_fsl_mrs_Interface):
+class EddyCurrentCorrection(BaseMRSInterface):
     input_spec = EddyCurrentCorrectionInputSpec
     output_spec = EddyCurrentCorrectionOutputSpec
     
@@ -754,7 +692,7 @@ class PhaseCorrectOutputSpec(TraitedSpec):
         mandatory=False
     )
 
-class PhaseCorrect(Base_fsl_mrs_Interface):
+class PhaseCorrect(BaseMRSInterface):
     input_spec = PhaseCorrectInputSpec
     output_spec = PhaseCorrectOutputSpec
     
@@ -854,7 +792,7 @@ class PhaseCorrectCreatineOutputSpec(TraitedSpec):
         mandatory=False
     )
 
-class PhaseCorrect_Creatine_ppmlim(Base_fsl_mrs_Interface):
+class PhaseCorrect_Creatine_ppmlim(BaseMRSInterface):
     input_spec = PhaseCorrectCreatineInputSpec
     output_spec = PhaseCorrectCreatineOutputSpec
     
@@ -962,7 +900,7 @@ class ShiftToReferenceOutputSpec(TraitedSpec):
 
 
 
-class ShiftToReference(Base_fsl_mrs_Interface):
+class ShiftToReference(BaseMRSInterface):
     input_spec = ShiftToReferenceInputSpec
     output_spec = ShiftToReferenceOutputSpec
     
@@ -1055,7 +993,7 @@ class ShiftToCreatineOutputSpec(TraitedSpec):
         mandatory=False
     )
 
-class ShiftToCreatine(Base_fsl_mrs_Interface):
+class ShiftToCreatine(BaseMRSInterface):
     input_spec = ShiftToCreatineInputSpec
     output_spec = ShiftToCreatineOutputSpec
     
@@ -1154,7 +1092,7 @@ class RemovePeakOutputSpec(TraitedSpec):
     )
 
 
-class RemovePeaks(Base_fsl_mrs_Interface):
+class RemovePeaks(BaseMRSInterface):
     input_spec = RemovePeakInputSpec
     output_spec = RemovePeakOutputSpec
     
@@ -1241,7 +1179,7 @@ class RemoveWaterOutputSpec(TraitedSpec):
     )
 
 
-class RemoveWater(Base_fsl_mrs_Interface):
+class RemoveWater(BaseMRSInterface):
     input_spec = RemoveWaterInputSpec
     output_spec = RemoveWaterOutputSpec
     
@@ -1287,79 +1225,6 @@ class RemoveWater(Base_fsl_mrs_Interface):
         outputs['out_file'] = self.inputs.out_file
         outputs['report'] = self._mrsreport
         return outputs
-# ------------------ DynamicAlign ------------------
-
-class AlignByDynamicFit_InputSpec(Base_NIFTI_MRS_InputSpec, Base_Basis_MRS_InputSpec, Model_NIFTI_MRS_InputSpec, ppm_NIFTI_MRS_InputSpec):
-    pass
-
-class eps_phi_OutputSpec(TraitedSpec):
-    eps = traits.Float(desc="Frequency shift")
-    phi = traits.Float(desc="Zero-order phase.")
-
-class AlignByDynamicFit_OutputSpec(Base_NIFTI_MRS_OutputSpec, eps_phi_OutputSpec):
-    pass
-
-def _dynamic_align(in_file:str, out_file: str, basis: list, baseline_order:int, model, ppmlim:tuple):
-    """
-    Perform eddy current correction.
-    """
-    from fsl_mrs.utils.preproc import dyn_based_proc as dproc
-    from fsl_mrs.utils import mrs_io
-
-    nifti_mrs = mrs_io.read_FID(in_file)
-
-    # read basis
-    if isinstance(basis, list):
-        basis = [mrs_io.read_basis(single_basis) for single_basis in basis]
-    else:
-        basis = mrs_io.read_basis(basis)
-
-    fitargs = {
-        "baseline_order":baseline_order, 
-        "model":model, 
-        "ppmlim":ppmlim
-        }
-
-    nifti_mrs, eps, phi = dproc.align_by_dynamic_fit(nifti_mrs, basis, fitargs)
-    
-    nifti_mrs.save(out_file)
-
-    return out_file, eps, phi
-    
-
-class AlignByDynamicFit(Base_fsl_mrs_Interface):
-
-    input_spec = AlignByDynamicFit_InputSpec
-    output_spec = AlignByDynamicFit_OutputSpec
-    
-    def _run_interface(self, runtime):
-        # output to tmp directory
-        self.inputs.out_file = os.path.abspath(self.inputs.out_file)
-
-        # run function
-        self.inputs.out_file, self._eps, self._phi = _dynamic_align(
-            # mandatory file_names
-            self.inputs.in_file, 
-            self.inputs.out_file,
-            # mandatory directories / directory
-            self.inputs.basis,
-            # mandatory parameters
-            baseline_order=self.inputs.baseline_order,
-            model=self.inputs.model,
-            ppmlim=self.inputs.ppmlim
-            # optional parameters
-            # TODO: Add optional parameters
-            )
-        
-        return runtime
-
-    def _list_outputs(self):
-        # get outputs
-        outputs = self._outputs().get()
-        outputs['out_file'] = self.inputs.out_file
-        outputs['eps'] = self._eps
-        outputs['phi'] = self._phi
-        return outputs
 
 
 ###################
@@ -1404,12 +1269,31 @@ def hermes_ref_remove_zero_mean_transients(ref):
     return ref
 
 
-class HERMESRefRemoveZeroMeanTransients(Base_fsl_mrs_Interface):
+class HERMESRefRemoveZeroMeanTransientsInputSpec(BaseInterfaceInputSpec):
+    in_file = File(
+        exists=True,
+        desc="NIFTI_MRS data.", 
+        mandatory=True
+        )
+    out_file = File(
+        desc="NIFTI_MRS data.", 
+        mandatory=False
+        )
+
+class HERMESRefRemoveZeroMeanTransientsOutputSpec(TraitedSpec):
+    out_file = File(
+        exists=True,
+        desc="NIFTI_MRS data.",
+        mandatory=True
+        )
+
+
+class HERMESRefRemoveZeroMeanTransients(BaseMRSInterface):
     """
     For TwinsMX HERMES ref data. Can't guarantee that this is a necesarry or useful step for other HERMES data.
     """
-    input_spec = Base_NIFTI_MRS_InputSpec
-    output_spec = Base_NIFTI_MRS_OutputSpec
+    input_spec = HERMESRefRemoveZeroMeanTransientsInputSpec
+    output_spec = HERMESRefRemoveZeroMeanTransientsOutputSpec
     
     INTERFACE_NAME='rm0meanTransients'
 
@@ -1492,7 +1376,7 @@ class SplitHermesOutputSpec(TraitedSpec):
     )
 
 
-class SplitHermes(Base_fsl_mrs_Interface):
+class SplitHermes(BaseMRSInterface):
     # Input and output specs
     input_spec = SplitHermesInputSpec
     output_spec = SplitHermesOutputSpec
@@ -1597,11 +1481,29 @@ def hermes_align_y_edit(svs):
     return svs
 
 
+class HERMESAlignYEditInputSpec(BaseInterfaceInputSpec):
+    in_file = File(
+        exists=True,
+        desc="NIFTI_MRS data.", 
+        mandatory=True
+        )
+    out_file = File(
+        desc="NIFTI_MRS data.", 
+        mandatory=False
+        )
 
-class HERMESAlignYEdit(Base_fsl_mrs_Interface):
+class HERMESAlignYEditOutputSpec(TraitedSpec):
+    out_file = File(
+        exists=True,
+        desc="NIFTI_MRS data.",
+        mandatory=True
+        )
+
+
+class HERMESAlignYEdit(BaseMRSInterface):
     # Input and output specs
-    input_spec = Base_NIFTI_MRS_InputSpec
-    output_spec = Base_NIFTI_MRS_OutputSpec
+    input_spec = HERMESAlignYEditInputSpec
+    output_spec = HERMESAlignYEditOutputSpec
     
     INTERFACE_NAME='hermesYalign'
 
@@ -1701,13 +1603,32 @@ def hermes_sort_subspectra(nifti_mrs):
     return nifti_mrs
 
 
-class hermes_sort_subspectra_InputSpec(Base_NIFTI_MRS_InputSpec, optional_ecc_NIFTI_MRS_InputSpec):
-    pass
+class HERMESSortSubspectraInputSpec(BaseInterfaceInputSpec):
+    in_file = File(
+        exists=True,
+        desc="NIFTI_MRS data.", 
+        mandatory=True
+        )
+    out_file = File(
+        desc="NIFTI_MRS data.",
+        mandatory=False
+        )
+    ecc_ref = File(
+        exists=True,
+        desc="NIFTI_MRS reference data for eddy current correction.", 
+        mandatory=False
+        )
+class HERMESSortSubspectraOutputSpec(TraitedSpec):
+    out_file = File(
+        exists=True,
+        desc="NIFTI_MRS data.",
+        mandatory=True
+        )
 
-class HERMESSortSubspectra(Base_fsl_mrs_Interface):
+class HERMESSortSubspectra(BaseMRSInterface):
     # Input and output specs
-    input_spec = hermes_sort_subspectra_InputSpec
-    output_spec = Base_NIFTI_MRS_OutputSpec
+    input_spec = HERMESSortSubspectraInputSpec
+    output_spec = HERMESSortSubspectraOutputSpec
     
     INTERFACE_NAME='hermesSort'
 
@@ -1791,7 +1712,7 @@ def hermes_edit_sum(nifti_mrs):
     return summation, gaba, gsh
 
 
-class HERMES_Edit_Sum(Base_fsl_mrs_Interface):
+class HERMES_Edit_Sum(BaseMRSInterface):
     # Input and output specs
     input_spec = hermes_sum_InputSpec
     output_spec = hermes_sum_OutputSpec
