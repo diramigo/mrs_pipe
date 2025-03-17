@@ -4,46 +4,179 @@ from nipype.interfaces.utility import IdentityInterface, Merge
 from nipype.interfaces.io import DataSink, SelectFiles
 from mrs_pipe.interfaces.fsl_mrs import *
 from mrs_pipe.interfaces.osprey import SpectralRegistration
+from fsl_mrs.utils import mrs_io
 
 
-def get_press_proc_wf():
+def get_press_proc_wf(svs, mrsref=None, eccref=None):
+
+
+    wf = Workflow(name='press_proc', base_dir='work')
+    inputnode = Node(IdentityInterface(fields=['svs','mrsref', 'eccref']), name='inputnode')
+
+    # eccref preproc
+    if eccref:
+
+        eccref_dim_tags = mrs_io.read_FID(eccref).dim_tags
+        if 'DIM_DYN' in eccref_dim_tags:
+
+            # frequency and phase align eccref transients (DIM_DYN)
+            align_eccref = Node(Align(), name='align_eccref')
+            align_eccref.inputs.dim = 'DIM_DYN'
+            align_eccref.inputs.ppmlim = (0,8)
+        
+            # average 
+            average_eccref = Node(Average(), name='avg_dyn_eccref')
+            average_eccref.inputs.dim = 'DIM_DYN'
+
+            wf.connect([
+                (inputnode, align_eccref, [('mrsref', 'in_file')]),
+                (align_eccref, average_eccref, [('out_file', 'in_file')])
+            ])
+
+    # mrsref preproc
+    if mrsref:
+
+        mrsref_dim_tags = mrs_io.read_FID(mrsref).dim_tags
+
+        # phase correction
+        phase_correct_ref = Node(PhaseCorrect(), name='phase_correct_mrsref')
+        phase_correct_ref.inputs.ppmlim = (4.55, 4.7)
+        phase_correct_ref.inputs.out_file = 'preproc'
+
+        ecc_mrsref = Node(EddyCurrentCorrection(), name='ec_correct_mrsref')
+        
+        if 'DIM_DYN' in mrsref_dim_tags:
+
+            # frequency and phase align mrsref transients (DIM_DYN)
+            align_mrsref = Node(Align(), name='align_mrsref')
+            align_mrsref.inputs.dim = 'DIM_DYN'
+            align_mrsref.inputs.ppmlim = (0,8)
+        
+            # average 
+            average_mrsref = Node(Average(), name='avg_dyn_mrsref')
+            average_mrsref.inputs.dim = 'DIM_DYN'
+
+            wf.connect([
+                (inputnode, align_mrsref, [('mrsref', 'in_file')]),
+                (align_mrsref, average_mrsref, [('out_file', 'in_file')]),
+                (average_mrsref, ecc_mrsref, [('out_file', 'in_file')])
+            ])
+
+        else:
+            wf.connect([
+                (inputnode, ecc_mrsref, [('mrsref', 'in_file')])
+            ])
+
+        # perform ecc on mrsref
+        if eccref:
+            if 'DIM_DYN' in eccref_dim_tags:
+                wf.connect([
+                    (average_eccref, ecc_mrsref, [('out_file', 'ref')])
+                ])
+            else:
+                wf.connect([
+                    (inputnode, ecc_mrsref, [('eccref', 'ref')])
+                ])
+        else:
+            if 'DIM_DYN' in mrsref_dim_tags:
+                wf.connect([
+                    (average_mrsref, ecc_mrsref, [('out_file', 'ref')])
+                ])
+            else:
+                wf.connect([
+                    (inputnode, ecc_mrsref, [('mrsref', 'ref')])
+                ])
     
-    # svs
-    phase_correct_svs = Node(
-        PhaseCorrect_Creatine_ppmlim(), 
-        name='phase_correct_svs'
-        )
-    
-    align_dyn = Node(Align(), name='align_dyn')
-    align_dyn.inputs.dim = 'DIM_DYN'
-    
+        # perform phase correction
+        wf.connect([
+            (ecc_mrsref, phase_correct_ref, [('out_file', 'in_file')])
+        ])
+
+
+    # svs preprocessing
+
     remove_water = Node(RemoveWater(), name='remove_water')
-    
+    phase_correct_svs = Node(PhaseCorrect_Creatine_ppmlim(), name='phase_correct_svs')
     shift2creatine = Node(ShiftToCreatine(), name='shift2creatine')
+    svs_dim_tags = mrs_io.read_FID(svs).dim_tags
 
-    average_svs = Node(Average(), name='avg_dyn')
-    average_svs.inputs.dim = 'DIM_DYN'
-    
-    ec_correct_svs = Node(EddyCurrentCorrection(), name='ec_correct_svs')
+    ## align transients
+    if 'DIM_DYN' in svs_dim_tags:
 
-    # ref
-    align_ref = Node(Align(), name='align_ref')
-    align_ref.inputs.dim = 'DIM_DYN'
-    align_ref.inputs.ppmlim = (0,8)
+        align_dyn = Node(Align(), name='align_dyn')
+        align_dyn.inputs.dim = 'DIM_DYN'
+
+        average_svs = Node(Average(), name='avg_dyn')
+        average_svs.inputs.dim = 'DIM_DYN'
     
-    get_ecc_ref = Node(Average(), name='get_ecc_ref')
-    get_ecc_ref.inputs.dim = 'DIM_DYN'
+        wf.connect([
+            (inputnode, align_dyn, [('svs', 'in_file')])
+        ])
+
+    ## ecc svs
+    if inputnode.inputs.eccref or inputnode.inputs.mrsref:
+        ecc_svs = Node(EddyCurrentCorrection(), name='ecc_svs')
+
+        if 'DIM_DYN' in svs_dim_tags:
+            wf.connect([
+                (align_dyn, ecc_svs, [('out_file', 'in_file')])
+            ])
+        else:
+            wf.connect([
+                (inputnode, ecc_svs, [('svs', 'in_file')])
+            ])
+
+        if inputnode.inputs.eccref:
+            if 'DIM_DYN' in eccref_dim_tags:
+                wf.connect([
+                    (average_eccref, ecc_svs, [('out_file', 'ref')])
+                ])
+            else:
+                wf.connect([
+                    (inputnode, ecc_svs, [('eccref', 'ref')])
+                ])
+        elif inputnode.inputs.mrsref:
+            if 'DIM_DYN' in mrsref_dim_tags:
+                wf.connect([
+                    (average_mrsref, ecc_svs, [('out_file', 'ref')])
+                ])
+            else:
+                wf.connect([
+                    (inputnode, ecc_svs, [('mrsref', 'ref')])
+                ])
+
+    ## remove water
+        wf.connect([
+            (ecc_svs, remove_water, [('out_file', 'in_file')])
+        ])
+
+    else:
+        if 'DIM_DYN' in svs_dim_tags:
+            wf.connect([
+                (align_dyn, remove_water, [('out_file', 'in_file')])
+            ])
+        else:
+            wf.connect([
+                (inputnode, remove_water, [('svs', 'in_file')])
+            ])
+
+    wf.connect([
+        (remove_water, shift2creatine, [('out_file', 'in_file')]),
+        (shift2creatine, phase_correct_svs,  [('out_file', 'in_file')])
+    ])
+
+    if 'DIM_DYN' in svs_dim_tags:
+        average_svs = Node(Average(), name='avg_dyn')
+        average_svs.inputs.dim = 'DIM_DYN'
+        average_svs.inputs.out_file = 'preproc'
     
-    ec_correct_ref = Node(EddyCurrentCorrection(), name='ec_correct_ref')
+        wf.connect([
+            (phase_correct_svs, average_svs, [('out_file', 'in_file')])
+        ])
+    else:
+        phase_correct_svs.inputs.out_file = 'preproc'
     
-    phase_correct_ref = Node(PhaseCorrect(), name='phase_correct_ref')
-    phase_correct_ref.inputs.ppmlim = (4.55, 4.7)
-    phase_correct_ref.inputs.out_file = 'preproc'
-    
-    average_ref = Node(Average(), name='avg_dyn_ref')
-    average_ref.inputs.dim = 'DIM_DYN'
-    
-    return None
+    return wf
 
 def get_hermes_subspectra_proc_wf(name, report_append=None):
 
