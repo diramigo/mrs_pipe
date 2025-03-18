@@ -2,13 +2,44 @@ from nipype.pipeline.engine import Node, Workflow
 from nipype.interfaces.base import BaseInterface, BaseInterfaceInputSpec, TraitedSpec, traits, File
 from nipype.interfaces.utility import IdentityInterface, Merge
 from nipype.interfaces.io import DataSink, SelectFiles
+from nipype.interfaces import fsl
 from mrs_pipe.interfaces.fsl_mrs import *
 from mrs_pipe.interfaces.osprey import SpectralRegistration
 from fsl_mrs.utils import mrs_io
 
+def get_svs_anat_wf():
+
+    def get_fslanat_derivatives(fsl_anat_dir):
+        from pathlib import Path
+        t1w2mni_file = str(Path(fsl_anat_dir) / 'T1_to_MNI_lin.nii.gz')
+        t1w2mni_mat = str(Path(fsl_anat_dir) / 'T1_to_MNI_lin.mat')
+
+        return t1w2mni_file, t1w2mni_mat
+    
+    Get_fslanat_derivatives = Function(
+        input_names='fsl_anat_dir', 
+        output_names=['t1w2mni_file', 't1w2mni_mat'], 
+        function=get_fslanat_derivatives
+        )
+
+    wf = Workflow(name='svs_anat')
+    inputnode = Node(IdentityInterface(fields=['t1w', 'fsl_anat_dir', 'svs']), 'inputnode')
+    svs_mask = Node(svs_segment_Interface(), name='svs_mask')
+    mask2standard = Node(fsl.FLIRT(apply_xfm=True, interp='nearestneighbour', uses_qform=True), 'mask2standard')
+    fslanat_derivatives = Node(Get_fslanat_derivatives, name='get_fslanat_derivatives')
+
+    wf.connect([
+        (inputnode, svs_mask, [('svs', 'svs')]),
+        (inputnode, svs_mask, [('fsl_anat_dir', 'fsl_anat_dir')]),
+        (inputnode, fslanat_derivatives, [('fsl_anat_dir', 'fsl_anat_dir')]),
+        (fslanat_derivatives, mask2standard, [('t1w2mni_file', 'reference')]),
+        (fslanat_derivatives, mask2standard, [('t1w2mni_mat', 'in_matrix_file')]),
+        (svs_mask, mask2standard, [('mask', 'in_file')]),
+    ])
+    
+    return wf
 
 def get_press_proc_wf(svs, mrsref=None, eccref=None):
-
     merge_svs = Node(Merge(numinputs=10), name='svs_reports2list')
     merge_mrsref = Node(Merge(numinputs=10), name='mrsref_reports2list')
 
