@@ -156,6 +156,81 @@ class merge_mrs_reports_Interface(CommandLine):
         return outputs
 
 
+class svs_segment_InputSpec(CommandLineInputSpec):
+    svs = traits.File(
+        exists=True,
+        argstr='%s',
+        position=-1,
+        mandatory=True,
+        desc="SVS nifti file.",
+        )
+    t1w_file = traits.Str(
+        argstr='--t1 %s',
+        mandatory=False,
+        description='T1 nifti file.'
+    )
+    fsl_anat_dir = traits.Str(
+        argstr='--anat %s',
+        mandatory=False,
+        description='fsl_anat output directory.'
+    )
+    filename = traits.Str(
+        argstr='--filename %s',
+        descripton="File name stem. _mask.nii.gz or _segmentation.json will be added.",
+        mandatory=False
+    )
+    mask_only = traits.Bool(
+        argstr='--mask_only',
+        descripton="Only perform masking stage, do not run fsl_anat if only T1 passed.",
+        mandatory=False,
+        usedefault=False
+    )
+    no_normalization = traits.Bool(
+        argstr='--no_normalisation',
+        descripton="Do not normalise output to 1 in all voxels.",
+        mandatory=False,
+        usedefault=False
+    ) 
+
+class svs_segment_OutputSpec(TraitedSpec):
+    mask = traits.File(
+        exists=True,
+        mandatory=True
+        )
+    segmentation_json = traits.File(
+        mandatory=False
+        )
+
+class svs_segment_Interface(CommandLine):
+    _cmd = "svs_segment"
+    input_spec = svs_segment_InputSpec
+    output_spec = svs_segment_OutputSpec
+
+    def _run_interface(self, runtime):
+        runtime = super()._run_interface(runtime)
+
+        if self.inputs.filename:
+            self._mask = self.inputs.filename + '_mask.nii.gz'
+            self._segmentation_json = self.inputs.filename + '_segmentation.json'
+        else:
+            self._mask = 'mask.nii.gz'
+            self._segmentation_json = 'segmentation.json'
+
+        if runtime.stderr:
+            self.raise_exception(runtime)
+        return runtime
+
+    def _format_arg(self, name, spec, value):
+        formatted = super()._format_arg(name, spec, value)
+        return formatted
+
+    def _list_outputs(self):
+        outputs = self.output_spec().get()
+        outputs["mask"] = os.path.abspath(self._mask)
+        outputs["segmentation_json"] = os.path.abspath(self._segmentation_json)
+        return outputs
+
+
 class MergeHermesInputSpec(BaseInterfaceInputSpec):
     both_off = File(
         exists=True,
