@@ -9,6 +9,8 @@ from fsl_mrs.utils import mrs_io
 
 def get_press_proc_wf(svs, mrsref=None, eccref=None):
 
+    merge_svs = Node(Merge(numinputs=10), name='svs_reports2list')
+    merge_mrsref = Node(Merge(numinputs=10), name='mrsref_reports2list')
 
     wf = Workflow(name='press_proc', base_dir='work')
     inputnode = Node(IdentityInterface(fields=['svs','mrsref', 'eccref']), name='inputnode')
@@ -38,6 +40,9 @@ def get_press_proc_wf(svs, mrsref=None, eccref=None):
 
         mrsref_dim_tags = mrs_io.read_FID(mrsref).dim_tags
 
+        mrsref_merge_mrs_reports = Node(merge_mrs_reports_Interface(), name='mrsref_merge_mrs_reports')
+        get_mrsref_stem = Node(get_file_stem_Interface, 'get_mrsref_stem')
+
         # phase correction
         phase_correct_ref = Node(PhaseCorrect(), name='phase_correct_mrsref')
         phase_correct_ref.inputs.ppmlim = (4.55, 4.7)
@@ -60,6 +65,9 @@ def get_press_proc_wf(svs, mrsref=None, eccref=None):
                 (inputnode, align_mrsref, [('mrsref', 'in_file')]),
                 (align_mrsref, average_mrsref, [('out_file', 'in_file')]),
                 (average_mrsref, ecc_mrsref, [('out_file', 'in_file')])
+
+                (align_mrsref, merge_mrsref, [('report', 'in1')]),
+                (average_mrsref, merge_mrsref, [('report', 'in2')])
             ])
 
         else:
@@ -89,7 +97,15 @@ def get_press_proc_wf(svs, mrsref=None, eccref=None):
     
         # perform phase correction
         wf.connect([
-            (ecc_mrsref, phase_correct_ref, [('out_file', 'in_file')])
+            (ecc_mrsref, phase_correct_ref, [('out_file', 'in_file')]),
+
+            (ecc_mrsref, merge_mrsref, [('report', 'in3')]),
+            (phase_correct_ref, merge_mrsref, [('report', 'inf4')]),
+            
+            (merge_mrsref, mrsref_merge_mrs_reports, [('out', 'in_files')]),
+            (inputnode, get_mrsref_stem, [('mrsref', 'file')]),
+            (get_mrsref_stem, mrsref_merge_mrs_reports, [('out', 'out_file')]),
+            (get_mrsref_stem, mrsref_merge_mrs_reports, [('out', 'description')])
         ])
 
 
@@ -106,11 +122,9 @@ def get_press_proc_wf(svs, mrsref=None, eccref=None):
         align_dyn = Node(Align(), name='align_dyn')
         align_dyn.inputs.dim = 'DIM_DYN'
 
-        average_svs = Node(Average(), name='avg_dyn')
-        average_svs.inputs.dim = 'DIM_DYN'
-    
         wf.connect([
-            (inputnode, align_dyn, [('svs', 'in_file')])
+            (inputnode, align_dyn, [('svs', 'in_file')]),
+            (align_dyn, merge_svs, [('report', 'in1')])
         ])
 
     ## ecc svs
@@ -147,7 +161,8 @@ def get_press_proc_wf(svs, mrsref=None, eccref=None):
 
     ## remove water
         wf.connect([
-            (ecc_svs, remove_water, [('out_file', 'in_file')])
+            (ecc_svs, remove_water, [('out_file', 'in_file')]),
+            (ecc_svs, merge_svs, [('report', 'in2')])
         ])
 
     else:
@@ -162,7 +177,11 @@ def get_press_proc_wf(svs, mrsref=None, eccref=None):
 
     wf.connect([
         (remove_water, shift2creatine, [('out_file', 'in_file')]),
-        (shift2creatine, phase_correct_svs,  [('out_file', 'in_file')])
+        (shift2creatine, phase_correct_svs,  [('out_file', 'in_file')]),
+
+        (remove_water, merge_svs, [('report', 'in3')]),
+        (shift2creatine, merge_svs, [('report', 'in4')]),
+        (phase_correct_svs, merge_svs, [('report', 'in5')])
     ])
 
     if 'DIM_DYN' in svs_dim_tags:
@@ -171,10 +190,22 @@ def get_press_proc_wf(svs, mrsref=None, eccref=None):
         average_svs.inputs.out_file = 'preproc'
     
         wf.connect([
-            (phase_correct_svs, average_svs, [('out_file', 'in_file')])
+            (phase_correct_svs, average_svs, [('out_file', 'in_file')]),
+            (average_svs, merge_svs, [('report', 'in6')])
         ])
     else:
         phase_correct_svs.inputs.out_file = 'preproc'
+
+    svs_merge_mrs_reports = Node(merge_mrs_reports_Interface(), name='svs_merge_mrs_reports')
+    get_svs_stem = Node(get_file_stem_Interface, 'get_svs_stem')
+    
+    wf.connect([
+        (inputnode, get_svs_stem,  [('svs', 'file')]),
+        (get_svs_stem, svs_merge_mrs_reports, [('out', 'description')]),
+        (get_svs_stem, svs_merge_mrs_reports, [('out', 'out_file')]),
+        (merge_svs, svs_merge_mrs_reports, [('out', 'in_files')])
+    ])
+    
     
     return wf
 
